@@ -339,12 +339,12 @@
       global.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         stopSoftwareAudio();
-        this.setStatus('已停止软件音源；Jam Buddy 本机直通仍可能发声，效果器尾音会自然衰减');
+        this.setStatus('已停止软件音源；输入设备的直通监听仍可能发声，效果器尾音会自然衰减');
       });
       // 显式"全停"按钮：给"关不掉"一个一目了然的出口
       $('btn-panic').addEventListener('click', () => {
         stopSoftwareAudio();
-        this.setStatus('已停止软件音源；Jam Buddy 本机直通仍可能发声，效果器尾音会自然衰减');
+        this.setStatus('已停止软件音源；输入设备的直通监听仍可能发声，效果器尾音会自然衰减');
       });
 
       /* ---- 小提琴 vs 钢琴 一键对比 ---- */
@@ -385,7 +385,7 @@
       });
 
       /* ---- 麦克风 / 电吉他 ----
-       * 吉他插电脑线路输入时优先采集该输入，让 Jam Buddy 只播放软件处理声。
+       * 吉他插电脑线路输入时优先采集该输入。
        * 若没有线路输入，再尝试匹配吉他声卡。 */
       const inSel = $('mic-input-select');
       const outSel = $('mic-output-select');
