@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>效果器可视化实验室</title>
+<link rel="stylesheet" href="css/style.css?v=16">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="hero">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 28 28" width="30" height="30" aria-hidden="true">
+        <g stroke="#bf5233" stroke-width="2.4" stroke-linecap="round" fill="none">
+          <line x1="14" y1="2.5" x2="14" y2="10.2"/>
+          <line x1="14" y1="17.8" x2="14" y2="25.5"/>
+          <line x1="2.5" y1="14" x2="10.2" y2="14"/>
+          <line x1="17.8" y1="14" x2="25.5" y2="14"/>
+          <line x1="6" y1="6" x2="11.4" y2="11.4"/>
+          <line x1="16.6" y1="16.6" x2="22" y2="22"/>
+          <line x1="22" y1="6" x2="16.6" y2="11.4"/>
+          <line x1="11.4" y1="16.6" x2="6" y2="22"/>
+          <line x1="9.5" y1="3.6" x2="12.6" y2="9.3"/>
+          <line x1="18.5" y1="24.4" x2="15.4" y2="18.7"/>
+        </g>
+      </svg>
+      <div>
+        <h1>效果器可视化实验室</h1>
+        <p class="sub">用眼睛看见声音</p>
+      </div>
+    </div>
+    <!-- 手绘墨线涂鸦：谐波节点 · 拱桥 · 星芒 · 正弦 -->
+    <svg class="doodles" viewBox="0 0 190 96" aria-hidden="true">
+      <rect x="118" y="8" width="26" height="26" rx="3" fill="#dcd5c1"/>
+      <g stroke="#211e19" stroke-width="1.8" fill="#211e19">
+        <line x1="20" y1="20" x2="55" y2="12"/>
+        <line x1="20" y1="20" x2="48" y2="40"/>
+        <line x1="55" y1="12" x2="48" y2="40"/>
+        <line x1="20" y1="20" x2="78" y2="24"/>
+        <circle cx="20" cy="20" r="3.4" stroke="none"/>
+        <circle cx="55" cy="12" r="2.6" stroke="none"/>
+        <circle cx="48" cy="40" r="2.6" stroke="none"/>
+        <circle cx="78" cy="24" r="2.2" stroke="none"/>
+      </g>
+      <g stroke="#211e19" stroke-width="2" stroke-linecap="round" fill="none">
+        <line x1="132" y1="44" x2="132" y2="56"/>
+        <line x1="123" y1="50" x2="133" y2="50"/>
+        <line x1="126" y1="42" x2="136" y2="50"/>
+        <line x1="124" y1="60" x2="131" y2="54"/>
+        <line x1="140" y1="42" x2="134" y2="49"/>
+      </g>
+      <g stroke="#211e19" stroke-width="2.2" fill="none" stroke-linecap="round">
+        <path d="M14 92 C 14 70, 52 70, 52 92"/>
+        <path d="M20 92 C 20 76, 46 76, 46 92"/>
+        <path d="M26 92 C 26 82, 40 82, 40 92"/>
+        <line x1="33" y1="86" x2="33" y2="94"/>
+      </g>
+      <path d="M96 88 Q 104 76, 112 88 T 128 88 T 144 88 T 160 88 T 176 88"
+            fill="none" stroke="#bf5233" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <div class="transport">
+    <div class="src-group">
+      <select id="source-select">
+        <option value="synth">内置音源</option>
+        <option value="file">音频文件</option>
+        <option value="mic">麦克风 / 电吉他</option>
+      </select>
+    </div>
+
+    <!-- 内置音源 -->
+    <div id="synth-panel" class="src-panel">
+      <div class="row" id="instrument-row">
+        <button class="btn chip active" data-inst="violin">小提琴</button>
+        <button class="btn chip" data-inst="piano">钢琴</button>
+        <button class="btn chip" data-inst="sine">正弦</button>
+        <button class="btn chip" data-inst="saw">锯齿</button>
+        <button class="btn chip" data-inst="square">方波</button>
+        <button class="btn chip" data-inst="triangle">三角</button>
+        <button class="btn chip" id="btn-noise">噪声</button>
+      </div>
+      <div class="row">
+        <span class="hint">按住发声，松手即停 · H = 440Hz · Esc 全停</span>
+        <button class="btn note" data-note="261.63">C4</button>
+        <button class="btn note" data-note="329.63">E4</button>
+        <button class="btn note" data-note="392.00">G4</button>
+        <button class="btn note" data-note="440.00">A4</button>
+        <button class="btn note" data-note="880.00">A5</button>
+        <button class="btn primary" id="btn-compare">小提琴 vs 钢琴</button>
+      </div>
+    </div>
+
+    <!-- 音频文件 -->
+    <div id="file-panel" class="src-panel hidden">
+      <input type="file" id="file-input" accept="audio/*" class="hidden">
+      <button class="btn" id="btn-file">选择音频文件</button>
+      <button class="btn" id="btn-file-play" disabled>播放</button>
+      <button class="btn" id="btn-analyze" title="发送到 Python 后端：全曲频谱图 / 谐波 / 响度统计">深度分析</button>
+      <label class="chk"><input type="checkbox" id="file-loop" checked> 循环</label>
+      <span class="hint" id="file-name"></span>
+    </div>
+
+    <!-- 麦克风 / 电吉他（USB 声卡，如 JOYO Jam Buddy II） -->
+    <div id="mic-panel" class="src-panel hidden">
+      <div class="dev-row">
+        <label>输入</label>
+        <select id="mic-input-select"></select>
+        <button class="btn" id="btn-mic">连接</button>
+      </div>
+      <div class="dev-row">
+        <label>输出</label>
+        <select id="mic-output-select"></select>
+      </div>
+      <span class="hint" id="mic-hint">吉他插电脑线路输入时会优先选它，软件声音尝试输出到 Jam Buddy</span>
+      <span class="hint" id="latency-info"></span>
+    </div>
+
+    <div class="master-group">
+      <label>音量</label>
+      <input type="range" id="master-volume" min="0" max="1" step="0.01" value="0.8" title="监听音量">
+      <button class="btn" id="btn-panic" title="停止软件音源：音符、文件、麦克风与噪声（快捷键 Esc）">全停</button>
+      <button class="btn" id="btn-ab" title="一键旁路所有效果器，对比处理前后">A/B</button>
+      <button class="btn" id="btn-help">原理讲解</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <nav id="viz-tabs">
+    <button class="tab active" data-tab="spectrum">频谱</button>
+    <button class="tab" data-tab="wave">波形</button>
+    <button class="tab" data-tab="spectrogram">频谱图</button>
+    <button class="tab" data-tab="analysis">分析</button>
+    <span class="readouts">
+      <span class="ro"><b id="ro-f0">—</b><i>基频</i></span>
+      <span class="ro"><b id="ro-note">—</b><i>音名</i></span>
+      <span class="ro"><b id="ro-rms">—</b><i>电平</i></span>
+      <span class="ro"><b id="ro-thd">—</b><i>失真</i></span>
+      <span class="ro"><b id="ro-sr">—</b><i>采样率</i></span>
+    </span>
+  </nav>
+
+  <section id="viz-area">
+    <canvas id="canvas-spectrum" class="viz active"></canvas>
+    <canvas id="canvas-wave" class="viz"></canvas>
+    <div id="spec-wrap" class="viz">
+      <canvas id="canvas-spectrogram"></canvas>
+      <div class="spec-labels">
+        <span style="top:10%">10k</span>
+        <span style="top:43.4%">1k</span>
+        <span style="top:76.7%">100</span>
+      </div>
+    </div>
+    <canvas id="canvas-analysis" class="viz"></canvas>
+    <div id="spectrum-legend">
+      <span class="lg"><i class="sw" style="color:#bf5233"></i>输出</span>
+      <span class="lg"><i class="sw thin" style="color:#a29a88"></i>输入</span>
+      <span class="lg"><i class="sw dashed" style="color:#5e7d83"></i>EQ 频响</span>
+      <span class="lg"><i class="sw thin" style="color:#a8842c"></i>峰值保持</span>
+      <span class="lg"><i class="sw thin" style="color:#6f7d5c"></i>谐波</span>
+      <label class="chk"><input type="checkbox" id="chk-compare" checked> 输入对比</label>
+    </div>
+    <div id="drop-hint" class="hidden">松手载入音频文件</div>
+  </section>
+</main>
+
+<section id="rack-section">
+  <div class="rack-head">
+    <h2>效果器机架</h2>
+    <span class="hint">信号链：Gate → Wah → Comp → Drive → EQ → 调制 → Delay → Reverb</span>
+    <span class="preset-group">
+      <label>音色组合</label>
+      <select id="preset-select" title="大牌效果器的经典组合"></select>
+      <button class="btn" id="btn-preset-reset" title="全部恢复默认并清除记忆">重置</button>
+    </span>
+  </div>
+  <div id="effects-rack"></div>
+</section>
+
+<footer id="statusbar"><span id="status-text"></span></footer>
+
+<!-- 原理讲解 -->
+<div id="modal" class="hidden">
+  <div class="modal-panel">
+    <button class="btn close" id="btn-close-modal">关闭</button>
+    <h2>为什么小提琴和钢琴拉同一个 440Hz，音色完全不同？</h2>
+    <p><b>音高</b>由基频决定（440Hz = A4，决定你听到的是哪个音），<b>音色</b>由泛音（谐波）结构决定。
+      440Hz 只是频谱上最左边那根峰（基频 f0），小提琴和钢琴在 880、1320、1760…（第 2、3、4 次谐波）处的峰完全不同：</p>
+    <ul>
+      <li><b>小提琴</b>：弓子持续拉动，谐波按约 1/k 递减且<b>稳定持续</b>，还有 5~6Hz 的揉弦（频率微微波动）和弓擦弦的噪声。</li>
+      <li><b>钢琴</b>：琴锤敲击，起音瞬间高次谐波很亮，随后<b>整体指数衰减</b>、高次谐波衰减更快；琴弦刚度还让第 k 次谐波比 k·f0 略偏高（非谐性），所以更"金属"。</li>
+      <li><b>正弦波</b>：只有一根峰 —— 没有泛音，所以"没有音色"。</li>
+    </ul>
+    <p>从时域看：两个信号每 1/440 秒重复一次（<b>周期相同 → 音高相同</b>），但一个周期内的<b>波形形状</b>不同。
+      傅里叶级数告诉我们：波形形状 = 各次谐波幅度与相位的叠加。<b>波形不同 ⇔ 泛音结构不同 ⇔ 音色不同</b>。</p>
+    <h3>验证方法</h3>
+    <ol>
+      <li>选"小提琴"，按住 A4，看频谱：等间距排列的峰 440 / 880 / 1320…（f0、H2、H3…标记）。</li>
+      <li>切到"钢琴"再按 A4：峰的高度分布不同；切到"频谱图"，衰减过程的差别一目了然。</li>
+      <li>点"小提琴 vs 钢琴"，峰值保持线会替你把两次的频谱叠在一起对比。</li>
+    </ol>
+    <h2>各效果器在频谱上做了什么？</h2>
+    <ul>
+      <li><b>Drive（增益·过载）</b>：把波形放大到削顶 → 波形趋近方波 → 频谱冒出大量新谐波峰。
+        选<b>正弦波</b>（失真≈0，频谱只有一根峰），打开 Drive，看失真读数飙升、频谱长出一排峰 —— 这就是失真音色的数学本质。</li>
+      <li><b>EQ（均衡）</b>：直接搬动频谱形状。三段增益 ±15dB，蓝色虚线就是 EQ 的频响曲线，叠加显示在频谱上。</li>
+      <li><b>Chorus（合唱）</b>：信号复制两份，各经过被慢速 LFO 调制的 ~20ms 延时 → 副本频率微微上下漂移，与原信号产生拍频 → 听感变"厚"。
+        频谱上单峰被抹宽，这就是厚度的来源。</li>
+      <li><b>Delay（延迟）</b>：原信号 + 延迟副本，副本再反馈回去形成回声序列。切到<b>频谱图</b>看平行的回声条纹；切到<b>波形</b>看一串重复脉冲。</li>
+      <li><b>Compressor（压缩）</b>：超过阈值的部分按比率压下来 → 动态变小、听感更密。看卡片上的 GR 表：信号越响，压得越多。</li>
+    </ul>
+    <h3>建议的实验路线</h3>
+    <ol>
+      <li>正弦波 + A4 → 记住"纯音"的样子（1 根峰，失真≈0）。</li>
+      <li>开 Drive → 频谱长出谐波 → 理解"削波 = 新增泛音 = 失真"。</li>
+      <li>小提琴 A4 + EQ 高频 +12dB → 高次谐波被抬高 → 音色变亮。</li>
+      <li>Delay 300ms / 反馈 50% → 频谱图看回声条纹；把反馈拉满听自激。</li>
+      <li>Chorus 深度拉满 → 频谱峰变宽；对比开/关用"A/B"。</li>
+      <li>加载你自己的音乐文件，用 EQ 抠"人声频段"（约 300Hz–3kHz）感受频率与听感对应关系。</li>
+    </ol>
+  </div>
+</div>
+
+<script src="js/dsp.js?v=16"></script>
+<script src="js/effects.js?v=16"></script>
+<script src="js/audio-engine.js?v=18"></script>
+<script src="js/visualizer.js?v=16"></script>
+<script src="js/ui.js?v=24"></script>
+<script src="js/main.js?v=18"></script>
+</body>
+</html>
