@@ -24,6 +24,15 @@ import time
 import webbrowser
 from pathlib import Path
 
+# pythonw / 无控制台 exe 的标准输出可能是 None，先保留诊断日志。
+if sys.stdout is None or sys.stderr is None:
+    log_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+    log_stream = (log_dir / "guitarlab.log").open("a", encoding="utf-8", buffering=1)
+    if sys.stdout is None:
+        sys.stdout = log_stream
+    if sys.stderr is None:
+        sys.stderr = log_stream
+
 import numpy as np
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -277,4 +286,4 @@ if __name__ == "__main__":
     threading.Thread(target=_watchdog, daemon=True).start()
     _open_browser_later()
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning", use_colors=False)
