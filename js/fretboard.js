@@ -45,14 +45,50 @@
 
   const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
   const nameOf = (m) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+  const scoreNameOf = (n) => {
+    if (!n.step) return nameOf(n.midi);
+    const mark = n.alter === 1 ? '♯' : n.alter === -1 ? '♭' : n.alter === 0 ? '' : `(${n.alter > 0 ? '+' : ''}${n.alter})`;
+    const octave = (n.midi - STAFF_PC[n.step] - n.alter) / 12 - 1;
+    return `${n.step}${mark}${octave}`;
+  };
 
-  // 五线谱音位：midi 唱名级数（C=0…B=6）与升号。黑键按升号记（F♯ 等），
-  // 谱面位置由"自然音级 + 八度"决定，升号只影响 ♯ 记号
-  const STAFF_LETTER = [
-    { deg: 0, alter: 0 }, { deg: 0, alter: 1 }, { deg: 1, alter: 0 }, { deg: 1, alter: 1 },
-    { deg: 2, alter: 0 }, { deg: 3, alter: 0 }, { deg: 3, alter: 1 }, { deg: 4, alter: 0 },
-    { deg: 4, alter: 1 }, { deg: 5, alter: 0 }, { deg: 5, alter: 1 }, { deg: 6, alter: 0 },
-  ];
+  const STAFF_DEG = { C: 0, D: 1, E: 2, F: 3, G: 4, A: 5, B: 6 };
+  const STAFF_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const SHARP_ORDER = ['F', 'C', 'G', 'D', 'A', 'E', 'B'];
+  const FLAT_ORDER = ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
+  const ACCIDENTAL_GLYPH = { sharp: '♯', flat: '♭', natural: '♮', 'double-sharp': '𝄪', 'double-flat': '𝄫' };
+  function _staffKeyAlter(step, fifths) {
+    if (fifths > 0) return SHARP_ORDER.slice(0, fifths).includes(step) ? 1 : 0;
+    if (fifths < 0) return FLAT_ORDER.slice(0, -fifths).includes(step) ? -1 : 0;
+    return 0;
+  }
+  // ASCII TAB 没有音名拼写：优先选择当前调号内的写法，其次按升/降调选择。
+  function _spellTabMidi(midi, fifths) {
+    const written = midi + 12;
+    const pc = ((written % 12) + 12) % 12;
+    const choices = [];
+    for (const step of Object.keys(STAFF_PC)) {
+      for (const alter of [-1, 0, 1]) {
+        if (((STAFF_PC[step] + alter + 12) % 12) === pc) choices.push({ step, alter });
+      }
+    }
+    choices.sort((a, b) => {
+      const cost = (p) => Math.abs(p.alter - _staffKeyAlter(p.step, fifths)) * 2 +
+        (p.alter && (fifths < 0 ? p.alter > 0 : p.alter < 0) ? 1 : 0);
+      return cost(a) - cost(b);
+    });
+    const result = choices[0];
+    const octave = (written - STAFF_PC[result.step] - result.alter) / 12 - 1;
+    return { ...result, octave };
+  }
+  function _rhythmFor(note, ev) {
+    if (note.type) return { type: note.type, dots: note.dots || 0 };
+    if (ev.rhythm) return ev.rhythm;
+    const choices = [[0.25, '16th', 0], [0.5, 'eighth', 0], [0.75, 'eighth', 1],
+      [1, 'quarter', 0], [1.5, 'quarter', 1], [2, 'half', 0], [3, 'half', 1], [4, 'whole', 0]];
+    const nearest = choices.reduce((best, item) => Math.abs(item[0] - ev.durBeats) < Math.abs(best[0] - ev.durBeats) ? item : best);
+    return { type: nearest[1], dots: nearest[2] };
+  }
 
   // 圆角矩形（老浏览器没有 ctx.roundRect 时的兜底）
   function _rr(g, x, y, w, h, r, fill, stroke) {
@@ -476,7 +512,7 @@
         const evs = this.score.events;
         const ev = evs[this.scoreCursor];
         const m = ev ? ev.measure : this.score.measures - 1;
-        u.target.textContent = ev ? ev.midis.map(nameOf).join('+') : '—';
+        u.target.textContent = ev ? ev.notes.map(scoreNameOf).join('+') : '—';
         u.progress.textContent =
           `第 ${Math.min(m + 1, this.score.measures)}/${this.score.measures} 小节 · ` +
           (ev ? `第 ${this.scoreCursor + 1}/${evs.length} 音` : `已完成 ${evs.length}/${evs.length} 音`);
@@ -832,9 +868,9 @@
         '<button class="btn close">关闭</button>' +
         '<h2>载入乐谱：六线谱文本 或 五线谱 MusicXML</h2>' +
         '<p><b>六线谱</b>：从 Ultimate Guitar 等直接复制 e|---3---| 形式的文本粘贴到下面，' +
-        '和弦名行（如 "Am  F  C  G"）会自动对应到小节。' +
+        '和弦名行（如 "Am  F  C  G"）会自动对应到小节；字符列距只能估算时值。' +
         '<b>五线谱</b>：用 MuseScore / Guitar Pro / Sibelius 导出 <b>MusicXML</b>（.musicxml / .xml），' +
-        '自动读音高、时值与和弦记号，程序按"最小手部移动"把音映射到指板。</p>' +
+        '自动读取调号、拍号、音高、音值与和弦记号，程序按"最小手部移动"把音映射到指板。</p>' +
         '<p class="hint">扫描版图片的乐谱识别（OMR）需要专门的模型服务，离线网页做不了——' +
         '可先用 MuseScore 等打开图片对照录入，再导出 MusicXML。</p>' +
         '<input type="file" accept=".musicxml,.xml,.txt" class="hidden">' +
@@ -939,6 +975,7 @@
       const parts = [
         score.title || (score.source === 'xml' ? 'MusicXML 乐谱' : '六线谱'),
         `${score.measures} 小节 · ${score.events.length} 音符`,
+        score.source === 'tab' ? '时值按字符间距估算' : '',
         score.chords.length ? '和弦 ' + score.chords.slice(0, 8).join(' ') : '',
         score.bpm ? score.bpm + ' BPM' : '',
         score.stats.skipped ? `跳过 ${score.stats.skipped} 个不可弹音` : '',
@@ -1096,14 +1133,11 @@
       }
     }
 
-    /* ---------- 乐谱流：横向滚动的时间轴 ----------
-     * 音符块按拍定位，随播放/跟弹游标从右向左流动；
-     * 陶土块 = 当前要弹的音，绿闪 = 刚弹对的音，灰块 = 已经过去的音。 */
     /* ---------- 乐谱流：横向滚动的时间轴（五线谱 + 六线谱双谱带） ----------
      * 音符块按拍定位，随播放/跟弹游标从右向左流动；
      * 陶土块 = 当前要弹的音，绿闪 = 刚弹对的音，灰块 = 已经过去的音。
-     * 上谱带 = 五线谱（吉他记谱：记谱音高比实际高八度），实心/空心
-     * 音符头表示时值，加线与升号按乐理画；下谱带 = 六线谱（品号）。 */
+     * 上谱带 = 五线谱（吉他记谱：记谱音高比实际高八度），
+     * 采用 XML 的书写音高、调号、临时记号及音值；下谱带 = 六线谱。 */
     _renderFlow(now) {
       const cv = this._flowCv;
       const w = cv.clientWidth, h = cv.clientHeight;
@@ -1129,34 +1163,32 @@
       else this._flowBeat += (target - this._flowBeat) * 0.15;
       const view = this._flowBeat;
 
-      const gutter = 36 * dpr;
-      const headX = Math.round(bw * 0.3);
-      const ppb = (bw - headX - 16 * dpr) / 16;   // 播放头右侧可见 16 拍
+      const gutter = 122 * dpr;                // 固定谱号、调号、拍号区
+      const headX = Math.max(gutter + 32 * dpr, Math.round(bw * 0.31));
+      const ppb = (bw - headX - 14 * dpr) / (w < 500 ? 7 : 10);
       const xOf = (beat) => headX + (beat - view) * ppb;
 
       // 版面几何：上 = 五线谱，下 = 六线谱 TAB
-      const staffTop = 16 * dpr;
-      const sp = 8 * dpr;
+      const staffTop = 19 * dpr;
+      const sp = 9 * dpr;
       const staffBot = staffTop + 4 * sp;
-      const tabTop = staffBot + 24 * dpr;
-      const rh = 10 * dpr;
+      const tabTop = staffBot + 30 * dpr;
+      const rh = 15 * dpr;
       const tabBot = tabTop + 5 * rh;
-      // 音高 → 五线谱 y。吉他记谱比实际音高高八度（m = midi + 12），
-      // 高音谱表底线 = 记谱 E4（dn 基准 37），每个音级走半个线距
-      const yHead = (midi) => {
-        const m = midi + 12;
-        const oct = Math.floor(m / 12) - 1;
-        const pc = ((m % 12) + 12) % 12;
-        const L = STAFF_LETTER[pc];
-        return { y: staffBot - ((oct + 1) * 7 + L.deg - 37) * (sp / 2), alter: L.alter };
-      };
+      const yWritten = (step, octave) => staffBot - ((octave + 1) * 7 + STAFF_DEG[step] - 37) * (sp / 2);
+      let activeMeasure = 0;
+      for (let i = 1; i < this.score.measureStarts.length; i++) {
+        if (this.score.measureStarts[i] > target) break;
+        activeMeasure = i;
+      }
+      const signature = this.score.measureInfo?.[activeMeasure] || { fifths: 0, beats: 4, beatType: 4 };
 
       // 五线谱 5 条线
       for (let i = 0; i < 5; i++) {
         const y = Math.round(staffTop + i * sp) + 0.5;
         g.strokeStyle = 'rgba(33,30,25,0.5)';
         g.lineWidth = 1;
-        g.beginPath(); g.moveTo(gutter, y); g.lineTo(bw, y); g.stroke();
+        g.beginPath(); g.moveTo(6 * dpr, y); g.lineTo(bw, y); g.stroke();
       }
       // 六线谱 6 条弦线（上细下粗）+ 弦名
       STRINGS.forEach((_, i) => {
@@ -1171,13 +1203,12 @@
       STRING_LABELS.forEach((lb, i) => {
         g.fillText(lb, 6 * dpr, tabTop + (i + 0.5) * rh + 3 * dpr);
       });
-      g.fillText('谱', 13 * dpr, staffTop + 2 * sp + 3 * dpr);
 
       // 小节线（贯穿双谱带）+ 小节号
       g.textAlign = 'center';
       for (const [mi, b] of this.score.measureStarts.entries()) {
         if (xOf(b) >= bw + 20) break;
-        if (xOf(b) < -10) continue;
+        if (xOf(b) < gutter) continue;
         const x = Math.round(xOf(b)) + 0.5;
         g.strokeStyle = 'rgba(70,62,48,0.2)';
         g.lineWidth = 1;
@@ -1187,7 +1218,7 @@
         g.fillText(String(mi + 1), x, tabBot + 13 * dpr);
       }
 
-      // 音符：TAB 块 + 品号，五线谱音符头 / 符干 / 加线 / 升号
+      // 音符：TAB 块 + 品号，五线谱音符头 / 符干 / 符尾 / 附点 / 临时记号
       const headRx = 4.4 * dpr, headRy = 3.1 * dpr;
       for (let i = 0; i < evs.length; i++) {
         const ev = evs[i];
@@ -1205,17 +1236,17 @@
         // ---- TAB 块 + 品号 ----
         for (const n of ev.notes) {
           const y = tabTop + (n.string + 0.5) * rh;
-          let fill = '#f2f2ef', text = C.ink2;
+          let fill = '#eaeae6', text = C.ink;
           if (outcome?.kind === 'hit' || hitK > 0) { fill = C.sage; text = '#fdf9f0'; }
           else if (outcome?.kind === 'skipped') { fill = '#b8907f'; text = '#fff'; }
           else if (outcome?.kind === 'wrong') { fill = '#a85646'; text = '#fff'; }
           else if (isCur || sounding) { fill = C.clay; text = '#fdf9f0'; }
           else if (ev.startBeat + ev.durBeats <= view) { fill = '#ededeb'; text = C.ink3; }
-          _rr(g, x0 + 1 * dpr, y - 3.6 * dpr, Math.max(4 * dpr, x1 - x0 - 2 * dpr), 7.2 * dpr, 2.5 * dpr, fill,
+          _rr(g, x0 + 1 * dpr, y - 5 * dpr, Math.max(4 * dpr, x1 - x0 - 2 * dpr), 10 * dpr, 3 * dpr, fill,
             isCur || sounding ? C.clayDeep : null);
           if (x1 - x0 > 16 * dpr) {
             g.fillStyle = text;
-            g.font = `${Math.round(8.5 * dpr)}px Georgia, serif`;
+            g.font = `${Math.round(10 * dpr)}px Georgia, serif`;
             g.textAlign = 'center';
             g.fillText(String(n.fret), (x0 + x1) / 2, y + 3 * dpr);
           }
@@ -1223,9 +1254,13 @@
 
         // ---- 五线谱音符 ----
         const xc = x0 + 7 * dpr;
-        const whole = ev.durBeats >= 3.75, half = ev.durBeats >= 1.75;
         for (const n of ev.notes) {
-          const pos = yHead(n.midi);
+          const pitch = n.step ? n : _spellTabMidi(n.midi, signature.fifths);
+          const pos = { y: yWritten(pitch.step, pitch.octave) };
+          const rhythm = _rhythmFor(n, ev);
+          const whole = rhythm.type === 'whole' || rhythm.type === 'breve';
+          const half = rhythm.type === 'half';
+          const flags = rhythm.type === 'eighth' ? 1 : rhythm.type === '16th' ? 2 : rhythm.type === '32nd' ? 3 : 0;
           const x = xc;
           if (x < gutter - 8 * dpr) continue;
           const fillHead = outcome?.kind === 'hit' ? C.sage :
@@ -1243,12 +1278,12 @@
               g.beginPath(); g.moveTo(x - 7 * dpr, Math.round(ly) + 0.5); g.lineTo(x + 7 * dpr, Math.round(ly) + 0.5); g.stroke();
             }
           }
-          // 升号（黑键音在谱面上标 ♯）
-          if (pos.alter) {
+          const accidental = n.displayAccidental || (!n.step && pitch.alter ? (pitch.alter > 0 ? 'sharp' : 'flat') : null);
+          if (accidental && ACCIDENTAL_GLYPH[accidental]) {
             g.fillStyle = hot ? hotCol : C.ink2;
-            g.font = `${Math.round(10 * dpr)}px Georgia, "Segoe UI Symbol", sans-serif`;
+            g.font = `${Math.round(13 * dpr)}px "Segoe UI Symbol", Georgia, serif`;
             g.textAlign = 'center';
-            g.fillText('♯', x - 8.5 * dpr, pos.y + 3.5 * dpr);
+            g.fillText(ACCIDENTAL_GLYPH[accidental], x - 10 * dpr, pos.y + 4 * dpr);
           }
           // 音符头（二分/全音符空心）+ 符干
           g.beginPath();
@@ -1267,13 +1302,58 @@
             const stemUp = pos.y > staffTop + 2 * sp;
             g.strokeStyle = fillHead;
             g.lineWidth = 1.1 * dpr;
+            const stemX = stemUp ? x + headRx - 0.5 * dpr : x - headRx + 0.5 * dpr;
+            const stemEnd = pos.y + (stemUp ? -28 : 28) * dpr;
             g.beginPath();
-            if (stemUp) { g.moveTo(x + headRx - 0.5, pos.y - 0.5); g.lineTo(x + headRx - 0.5, pos.y - 21 * dpr); }
-            else { g.moveTo(x - headRx + 0.5, pos.y + 0.5); g.lineTo(x - headRx + 0.5, pos.y + 21 * dpr); }
+            g.moveTo(stemX, pos.y); g.lineTo(stemX, stemEnd);
             g.stroke();
+            // 八分及更短音值画独立符尾；连续音的连梁留给后续排版。
+            for (let flag = 0; flag < flags; flag++) {
+              const fy = stemEnd + (stemUp ? 7 : -7) * flag * dpr;
+              g.beginPath();
+              g.moveTo(stemX, fy);
+              g.bezierCurveTo(stemX + 9 * dpr, fy + (stemUp ? 2 : -2) * dpr,
+                stemX + 11 * dpr, fy + (stemUp ? 9 : -9) * dpr,
+                stemX + 7 * dpr, fy + (stemUp ? 13 : -13) * dpr);
+              g.stroke();
+            }
+          }
+          for (let dot = 0; dot < Math.min(rhythm.dots || 0, 2); dot++) {
+            g.beginPath();
+            g.arc(x + (8 + dot * 4) * dpr, pos.y - 2 * dpr, 1.3 * dpr, 0, Math.PI * 2);
+            g.fillStyle = fillHead;
+            g.fill();
           }
         }
       }
+
+      // 左端谱号/调号/拍号固定显示当前小节，覆盖滚动到其下方的音符。
+      g.fillStyle = '#fff';
+      g.fillRect(0, 0, gutter, tabTop - 9 * dpr);
+      for (let i = 0; i < 5; i++) {
+        const y = Math.round(staffTop + i * sp) + 0.5;
+        g.strokeStyle = 'rgba(33,30,25,0.5)';
+        g.lineWidth = 1;
+        g.beginPath(); g.moveTo(6 * dpr, y); g.lineTo(gutter, y); g.stroke();
+      }
+      g.fillStyle = C.ink;
+      g.textAlign = 'left';
+      g.font = `${Math.round(37 * dpr)}px "Segoe UI Symbol", "Noto Music", serif`;
+      g.fillText('𝄞', 10 * dpr, staffBot + 8 * dpr);
+      g.font = `${Math.round(9 * dpr)}px Georgia, serif`;
+      g.fillText('8', 23 * dpr, staffBot + 12 * dpr);
+      const order = signature.fifths > 0 ? SHARP_ORDER : FLAT_ORDER;
+      const keyOctaves = signature.fifths > 0 ? [5, 5, 5, 5, 4, 5, 4] : [4, 5, 4, 5, 4, 5, 4];
+      const keyGlyph = signature.fifths > 0 ? '♯' : '♭';
+      g.font = `${Math.round(15 * dpr)}px "Segoe UI Symbol", Georgia, serif`;
+      for (let i = 0; i < Math.min(7, Math.abs(signature.fifths)); i++) {
+        g.fillText(keyGlyph, (42 + i * 8.5) * dpr, yWritten(order[i], keyOctaves[i]) + 4 * dpr);
+      }
+      const timeX = (49 + Math.abs(signature.fifths) * 8.5) * dpr;
+      g.font = `bold ${Math.round(16 * dpr)}px Georgia, serif`;
+      g.textAlign = 'center';
+      g.fillText(String(signature.beats), timeX, staffTop + 1.75 * sp);
+      g.fillText(String(signature.beatType), timeX, staffTop + 3.8 * sp);
 
       // 播放头（贯穿双谱带）
       g.strokeStyle = C.clay;

@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="252" height="72" viewBox="0 0 252 72" role="img" aria-labelledby="title desc">
   <title id="title">Mentor</title>
-  <desc id="desc">M 的笔画像音符，entor 写在五线谱上</desc>
+  <desc id="desc">M 的笔画与两个音符头组成带符尾的音符，entor 写在五线谱上</desc>
   <g fill="none" stroke="#d8d6d0" stroke-width="1.15" stroke-linecap="round">
     <path d="M71 22H242M71 31H242M71 40H242M71 49H242M71 58H242"/>
   </g>
   <path d="M13 55V17L33 43L53 17V55" fill="none" stroke="#191919" stroke-width="5.4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M53 17V6C58 8 63 12 65 18" fill="none" stroke="#191919" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
   <ellipse cx="13" cy="57" rx="6.8" ry="4.6" transform="rotate(-25 13 57)" fill="#bd6447"/>
   <ellipse cx="53" cy="57" rx="6.8" ry="4.6" transform="rotate(-25 53 57)" fill="#bd6447"/>
   <text x="73" y="54" fill="#191919" font-family="Arial, Helvetica, sans-serif" font-size="45" font-weight="600" letter-spacing="-2.6">entor</text>

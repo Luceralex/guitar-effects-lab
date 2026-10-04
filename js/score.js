@@ -16,11 +16,28 @@
 
   const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const STEP_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const SHARP_ORDER = ['F', 'C', 'G', 'D', 'A', 'E', 'B'];
+  const FLAT_ORDER = ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
   const MAX_FRET_PARSE = 24;   // tab 里出现的品号上限（超过的当误识别丢掉）
   const MEASURE_BEATS = 4;     // tab 文本按 4/4 估：一个小节 4 拍
 
   const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
   const nameOf = (m) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+  function keyAlter(step, fifths) {
+    if (fifths > 0) return SHARP_ORDER.slice(0, Math.min(7, fifths)).includes(step) ? 1 : 0;
+    if (fifths < 0) return FLAT_ORDER.slice(0, Math.min(7, -fifths)).includes(step) ? -1 : 0;
+    return 0;
+  }
+  // ASCII TAB 无音值记号，只有列宽；选最接近的常见音值用于显示。
+  function estimatedRhythm(beats) {
+    const values = [
+      [0.25, '16th', 0], [0.375, '16th', 1], [0.5, 'eighth', 0],
+      [0.75, 'eighth', 1], [1, 'quarter', 0], [1.5, 'quarter', 1],
+      [2, 'half', 0], [3, 'half', 1], [4, 'whole', 0],
+    ];
+    const nearest = values.reduce((best, item) => Math.abs(item[0] - beats) < Math.abs(best[0] - beats) ? item : best);
+    return { type: nearest[1], dots: nearest[2], estimated: true };
+  }
 
   /* ================= 和弦识别 ================= */
   const CHORD_TEMPLATES = [
@@ -256,13 +273,16 @@
     let prevStart = 0;
     let measureEnd = 0;
     const measureStarts = [];
+    const measureInfo = [];
     let bpm = null;
     let measures = 0;
+    let fifths = 0, beats = 4, beatType = 4;
 
     for (const measure of part.children) {
       if (measure.tagName !== 'measure') continue;
       const measureStart = measureEnd;
       measureStarts.push(measureStart);
+      measureInfo.push({ fifths, beats, beatType });
       cursor = measureStart;
       prevStart = measureStart;
       measures++;
@@ -270,6 +290,14 @@
         if (node.tagName === 'attributes') {
           const dv = node.querySelector('divisions');
           if (dv) divisions = parseFloat(dv.textContent) || divisions;
+          const key = node.querySelector('key > fifths');
+          if (key) fifths = Math.max(-7, Math.min(7, parseInt(key.textContent, 10) || 0));
+          const time = node.querySelector('time');
+          if (time) {
+            beats = parseInt(time.querySelector('beats')?.textContent || '', 10) || beats;
+            beatType = parseInt(time.querySelector('beat-type')?.textContent || '', 10) || beatType;
+          }
+          measureInfo[measures - 1] = { fifths, beats, beatType };
           const tr = node.querySelector('transpose');
           if (tr) transpose = (parseInt(tr.querySelector('chromatic')?.textContent || '0', 10) || 0) +
             12 * (parseInt(tr.querySelector('octave-change')?.textContent || '0', 10) || 0);
@@ -308,9 +336,15 @@
           }
           const step = node.querySelector('pitch step')?.textContent;
           if (!step) continue;
-          const alter = parseInt(node.querySelector('pitch alter')?.textContent || '0', 10) || 0;
+          const alter = parseFloat(node.querySelector('pitch alter')?.textContent || '0') || 0;
           const octave = parseInt(node.querySelector('pitch octave')?.textContent || '4', 10);
           const midi = (octave + 1) * 12 + STEP_PC[step] + alter + transpose;
+          const pitchInfo = {
+            midi, step, alter, octave,
+            accidental: node.querySelector('accidental')?.textContent?.trim() || null,
+            type: node.querySelector('type')?.textContent?.trim() || null,
+            dots: node.querySelectorAll('dot').length,
+          };
           const isChord = !!node.querySelector('chord');
           const start = isChord ? prevStart : cursor;
           if (!isChord) { prevStart = start; cursor += dur; }
@@ -318,9 +352,10 @@
           const last = events[events.length - 1];
           if (isChord && last && last.startBeat === start) {
             last.midis.push(midi);
+            last.pitches.push(pitchInfo);
             last.durBeats = Math.max(last.durBeats, dur);
           } else {
-            events.push({ startBeat: start, durBeats: Math.max(0.25, dur), midis: [midi], measure: measures - 1 });
+            events.push({ startBeat: start, durBeats: Math.max(0.25, dur), midis: [midi], pitches: [pitchInfo], measure: measures - 1 });
           }
         }
       }
@@ -332,12 +367,26 @@
       const prev = joined[joined.length - 1];
       if (prev && prev.startBeat === ev.startBeat && prev.measure === ev.measure) {
         prev.midis.push(...ev.midis);
+        prev.pitches.push(...ev.pitches);
         prev.durBeats = Math.max(prev.durBeats, ev.durBeats);
       } else joined.push(ev);
     }
+    // 临时记号按小节、音名和八度持续；明确写在 XML 中的记号始终显示。
+    let lastMeasure = -1;
+    let accidentals = new Map();
+    for (const ev of joined) {
+      if (ev.measure !== lastMeasure) { accidentals = new Map(); lastMeasure = ev.measure; }
+      for (const p of ev.pitches) {
+        const id = `${p.step}${p.octave}`;
+        const expected = accidentals.has(id) ? accidentals.get(id) : keyAlter(p.step, measureInfo[ev.measure].fifths);
+        if (p.accidental) p.displayAccidental = p.accidental;
+        else if (p.alter !== expected) p.displayAccidental = p.alter === 1 ? 'sharp' : p.alter === -1 ? 'flat' : p.alter === 0 ? 'natural' : null;
+        accidentals.set(id, p.alter);
+      }
+    }
     return buildScore({
       source: 'xml', title: doc.querySelector('work-title, movement-title')?.textContent?.trim() || null,
-      events: joined, measures, measureStarts, totalBeats: measureEnd,
+      events: joined, measures, measureStarts, measureInfo, totalBeats: measureEnd,
       chordMarks, tuning, maxFret, warnings,
       bpm: bpm && bpm > 20 && bpm < 300 ? Math.round(bpm) : null,
     });
@@ -359,7 +408,9 @@
     let prevF = 3, prevS = 3;
     let skipped = 0;
     for (const ev of score.events) {
-      const midis = (ev.midis || []).slice().sort((a, b) => a - b).slice(0, 6);
+      const pitches = (ev.pitches || (ev.midis || []).map((midi) => ({ midi })))
+        .slice().sort((a, b) => a.midi - b.midi).slice(0, 6);
+      const midis = pitches.map((p) => p.midi);
       const notes = [];
       if (midis.length === 1) {
         const cands = positionsOf(midis[0]);
@@ -370,7 +421,7 @@
             c.fret * 0.1 + (c.fret === 0 ? -0.6 : 0);
           if (cost < bestCost) { bestCost = cost; best = c; }
         }
-        notes.push({ ...best, midi: midis[0] });
+        notes.push({ ...best, ...pitches[0] });
       } else if (midis.length > 1) {
         const candLists = midis.map(positionsOf);
         if (candLists.some((l) => !l.length)) { skipped += midis.length; continue; }
@@ -402,7 +453,7 @@
         };
         dfs(0, [], []);
         if (!best) { skipped += midis.length; continue; }
-        notes.push(...best.map((p, i) => ({ ...p, midi: midis[i] })));
+        notes.push(...best.map((p, i) => ({ ...p, ...pitches[i] })));
       }
       ev.notes = notes;
       ev.midis = notes.map((n) => tuning[n.string] + n.fret);
@@ -420,9 +471,24 @@
     const { tuning, maxFret } = base;
     // tab 事件已有指位 → 补 midi；xml 事件只有 midi → 映射指位
     if (base.source === 'tab') {
+      let lastMeasure = -1;
+      let accidentals = new Map();
       for (const ev of events) {
-        for (const n of ev.notes) n.midi = tuning[n.string] + n.fret;
+        if (ev.measure !== lastMeasure) { accidentals = new Map(); lastMeasure = ev.measure; }
+        for (const n of ev.notes) {
+          n.midi = tuning[n.string] + n.fret;
+          const written = n.midi + 12;
+          const name = NOTE_NAMES[((written % 12) + 12) % 12];
+          n.step = name[0];
+          n.alter = name.length > 1 ? 1 : 0;
+          n.octave = (written - STEP_PC[n.step] - n.alter) / 12 - 1;
+          const id = `${n.step}${n.octave}`;
+          const expected = accidentals.get(id) || 0;
+          if (n.alter !== expected) n.displayAccidental = n.alter ? 'sharp' : 'natural';
+          accidentals.set(id, n.alter);
+        }
         ev.midis = ev.notes.map((n) => n.midi);
+        ev.rhythm = estimatedRhythm(ev.durBeats);
       }
     } else {
       const mapped = mapToFretboard({ events }, tuning, maxFret);
@@ -460,6 +526,7 @@
       source: base.source, title: base.title,
       events, measures, totalBeats,
       measureStarts: base.measureStarts || Array.from({ length: measures }, (_, m) => m * MEASURE_BEATS),
+      measureInfo: base.measureInfo || Array.from({ length: measures }, () => ({ fifths: 0, beats: 4, beatType: 4 })),
       chordForMeasure,
       chords: [...new Set(chordForMeasure.filter(Boolean).map((c) => c.name))],
       bpm: base.bpm || null,

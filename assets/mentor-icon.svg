@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Mentor">
   <rect width="64" height="64" rx="15" fill="#fff"/>
   <path d="M12 47V16L32 40L52 16V47" fill="none" stroke="#191919" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M52 16V6C56 8 59 12 59 17" fill="none" stroke="#191919" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
   <ellipse cx="12" cy="49" rx="6" ry="4" transform="rotate(-25 12 49)" fill="#bd6447"/>
   <ellipse cx="52" cy="49" rx="6" ry="4" transform="rotate(-25 52 49)" fill="#bd6447"/>
 </svg>

@@ -57,6 +57,20 @@ test('loaded score follows playing and returns to practice start after audition'
   Object.defineProperty(flow, 'clientHeight', { value: 150 });
   assert.doesNotThrow(() => trainer._renderFlow(1000));
 
+  const glyphs = [];
+  drawing.fillText = (value) => glyphs.push(String(value));
+  trainer._tryLoad(`<score-partwise><part id="P1"><measure number="1"><attributes><divisions>1</divisions>
+    <key><fifths>-1</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time></attributes>
+    <note><pitch><step>B</step><alter>-1</alter><octave>3</octave></pitch><duration>1</duration><type>quarter</type></note>
+    <note><pitch><step>B</step><alter>0</alter><octave>3</octave></pitch><duration>2</duration><type>half</type><accidental>natural</accidental></note>
+    </measure></part></score-partwise>`);
+  trainer._renderFlow(1000);
+  assert.equal(document.getElementById('tb-target').textContent, 'B♭3');
+  assert.ok(glyphs.includes('𝄞'));
+  assert.ok(glyphs.includes('♭'), 'key signature is drawn');
+  assert.ok(glyphs.includes('♮'), 'changed note is explicitly natural');
+  assert.ok(glyphs.includes('3') && glyphs.includes('4'), 'meter is drawn');
+
   trainer._tryLoad('e|0---0---|\nB|1-------|\nG|--------|\nD|--------|\nA|--------|\nE|--------|');
   assert.equal(trainer.score.events[0].midis.length, 2);
   trainer.buf = Float32Array.from({ length: 16384 }, (_, i) =>

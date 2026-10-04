@@ -29,6 +29,32 @@ test('MusicXML preserves pickup and polyphonic measure starts and sounding octav
   assert.ok(result.events.every((e) => e.notes.every((n) => Number.isFinite(n.midi))));
 });
 
+test('MusicXML keeps key, meter, written spelling, note type, dots, and measure accidentals', () => {
+  const xml = `<score-partwise><part id="P1">
+    <measure number="1"><attributes><divisions>2</divisions><key><fifths>-2</fifths></key>
+      <time><beats>3</beats><beat-type>4</beat-type></time>
+      <transpose><chromatic>0</chromatic><octave-change>-1</octave-change></transpose></attributes>
+      <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>3</duration><type>quarter</type><dot/></note>
+      <note><pitch><step>B</step><alter>0</alter><octave>4</octave></pitch><duration>1</duration><type>eighth</type></note>
+      <note><pitch><step>B</step><alter>0</alter><octave>4</octave></pitch><duration>2</duration><type>quarter</type></note></measure>
+    <measure number="2"><note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>6</duration><type>half</type><dot/></note></measure>
+  </part></score-partwise>`;
+  const result = Score.parseMusicXml(xml, tuning, 15);
+  assert.ok(!result.error, result.error);
+  assert.deepEqual(Array.from(result.measureStarts), [0, 3]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.measureInfo[0])), { fifths: -2, beats: 3, beatType: 4 });
+  assert.deepEqual(Array.from(result.events, (e) => e.durBeats), [1.5, 0.5, 1, 3]);
+  assert.equal(result.events[0].notes[0].midi, 58);
+  assert.equal(result.events[0].notes[0].step, 'B');
+  assert.equal(result.events[0].notes[0].alter, -1);
+  assert.equal(result.events[0].notes[0].type, 'quarter');
+  assert.equal(result.events[0].notes[0].dots, 1);
+  assert.equal(result.events[0].notes[0].displayAccidental, undefined, 'B-flat is supplied by the key signature');
+  assert.equal(result.events[1].notes[0].displayAccidental, 'natural');
+  assert.equal(result.events[2].notes[0].displayAccidental, undefined, 'natural carries within the measure');
+  assert.equal(result.events[3].notes[0].displayAccidental, undefined, 'new measure restores B-flat key signature');
+});
+
 test('unplayable imported notes are removed before playback', () => {
   const xml = `<score-partwise><part id="P1"><measure number="1">${pitch('C', 2)}${pitch('E', 4)}</measure></part></score-partwise>`;
   const result = Score.parseMusicXml(xml, tuning, 15);

@@ -468,7 +468,7 @@ body:not([data-workspace="analysis"]) #viz-tabs { display: none; }
 #viz-area { margin: 24px 0 0; height: clamp(380px, 48vh, 580px); background: #fff; border-radius: 16px; box-shadow: 0 5px 25px rgba(20, 20, 20, .03); }
 body[data-workspace="tone"] #viz-area { display: none; }
 #viz-area.tall { height: clamp(500px, 64vh, 760px); }
-#viz-area.tall.scoring { height: clamp(680px, 82vh, 960px); }
+#viz-area.tall.scoring { height: clamp(720px, 84vh, 1000px); }
 #trainer-ctrl { padding: 16px 20px; gap: 10px 18px; background: #fff; }
 #trainer-ctrl > label { color: var(--ink-2); }
 #trainer-strip { padding: 13px 20px; background: #fafaf8; }
@@ -478,7 +478,7 @@ body[data-workspace="tone"] #viz-area { display: none; }
 .ss-transport { gap: 8px 14px; }
 .ss-transport .btn { padding: 6px 11px; }
 .ss-transport .ss-latency { width: 80px; }
-#canvas-scoreflow { height: 174px; background: #fff; }
+#canvas-scoreflow { height: 200px; background: #fff; }
 #analysis-note { display: none; max-width: 640px; margin: 15px 0; color: var(--ink-3); font-size: 12px; }
 body[data-workspace="analysis"] #analysis-note { display: block; }
 
@@ -531,12 +531,12 @@ body:not([data-workspace="tone"]) #rack-section { display: none; }
   .src-group select { flex: 1 1 180px; }
   #viz-area { margin-top: 18px; }
   #viz-area.tall { height: 690px; }
-  #viz-area.tall.scoring { height: 870px; }
+  #viz-area.tall.scoring { height: 910px; }
   #trainer-ctrl, #score-strip { padding: 12px; }
   #trainer-strip { padding: 10px 12px; flex-wrap: wrap; gap: 10px 0; }
   .t-block { padding: 0 13px; }
   .t-hint { width: 100%; max-width: none; margin: 0; text-align: left; }
-  #canvas-scoreflow { height: 145px; }
+  #canvas-scoreflow { height: 200px; }
   .rack-head { display: block; }
   .preset-group { display: flex; flex-wrap: wrap; margin-top: 16px; }
   .preset-group select { min-width: 0; flex: 1; }
@@ -546,5 +546,5 @@ body:not([data-workspace="tone"]) #rack-section { display: none; }
   .readouts { grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .workspace-actions .btn { padding: 10px 12px; }
   #viz-area.tall { height: 760px; }
-  #viz-area.tall.scoring { height: 970px; }
+  #viz-area.tall.scoring { height: 1010px; }
 }
