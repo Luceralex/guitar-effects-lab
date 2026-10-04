@@ -1,5 +1,5 @@
 # ============================================================
-# server.py —— 效果器实验室后端（可打包为单文件 exe 分发）
+# server.py —— Mentor 本地分析服务（可打包为单文件 exe 分发）
 # ------------------------------------------------------------
 # 接口：
 #   POST /api/analyze    Int16 PCM（?sample_rate=）→ JSON 分析结果
@@ -72,7 +72,7 @@ def _watchdog():
     os._exit(0)
 
 
-app = FastAPI(title="效果器可视化实验室 · 后端")
+app = FastAPI(title="Mentor · 音色与弹奏助手")
 
 
 # ---------- 禁止启发式缓存 ----------
@@ -271,6 +271,7 @@ async def index():
 
 app.mount("/css", StaticFiles(directory=str(BASE / "css")), name="css")
 app.mount("/js", StaticFiles(directory=str(BASE / "js")), name="js")
+app.mount("/assets", StaticFiles(directory=str(BASE / "assets")), name="assets")
 
 
 def _port_free(port):
