@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | in-progress |
+| Status | complete |
 | Created | 2026-10-04 |
 | Ticket | N/A |
 | Branch | main |
@@ -125,8 +125,13 @@ flowchart LR
 - **Acceptance:** 只弹一个和弦音不通过；音符头落在起音位置；试听不会让练习游标提前跳或留在末尾。
 - **Dependencies:** 3.1
 
-### 3.3 [ ] 本地和在线验收
+### 3.3 [x] 本地和在线验收 *(completed 2026-10-04)*
 - **Files:** `README.md`, `index.html`, `js/main.js`, `server.py`, `tests/*`
 - **What:** 完整说明硬件接法、自由/节拍模式的诊断边界；运行语法与核心测试，检查本地页面及公开静态页资源，完成后发布。
 - **Acceptance:** 无回归，Git 状态干净，在线与下载版加载相同新功能。
 - **Dependencies:** 3.2
+
+**验收记录：** `npm test` 15 项通过，`python -m py_compile server.py` 通过；
+本地 8765 首页、新脚本与乐谱脚本返回 HTTP 200。GitHub Pages 首页引用
+`practice.js?v=1`、`score.js?v=26`、`fretboard.js?v=38`，新增脚本返回 HTTP 200。
+真实电吉他/音箱输入的听感和输入补偿值仍需用户在设备上实测。
