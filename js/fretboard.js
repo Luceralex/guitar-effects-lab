@@ -38,9 +38,9 @@
 
   // 与 style.css 同一套书页配色
   const C = {
-    plate: '#fbf9f2', board: '#f5f0e0', ink: '#211e19', ink2: '#6b6353',
-    ink3: '#9a927e', line: '#e3ddcb', line2: '#cfc7ae',
-    clay: '#bf5233', clayDeep: '#96421f', sage: '#6f7d5c',
+    plate: '#ffffff', board: '#f7f7f4', ink: '#191919', ink2: '#60615e',
+    ink3: '#858681', line: '#e9e9e5', line2: '#d8d9d3',
+    clay: '#bd6447', clayDeep: '#9b4a34', sage: '#6f7d5c',
   };
 
   const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -768,12 +768,13 @@
         '<div class="ss-chords"></div>' +
         '<div class="ss-progress-wrap"><div class="ss-progress"><div></div></div></div>' +
         '</div>';
-      wrap.insertBefore(strip, this.cv);
-      // 乐谱流（滚动时间轴）：插在乐谱条与指板画布之间
+      const readout = $('trainer-strip');
+      wrap.insertBefore(strip, readout);
+      // 乐谱流置于实时读数之前，形成「谱面 → 反馈 → 指板」的阅读顺序
       const flow = d('canvas');
       flow.id = 'canvas-scoreflow';
       flow.className = 'hidden';
-      wrap.insertBefore(flow, this.cv);
+      wrap.insertBefore(flow, readout);
       this._flowCv = flow;
       this._flowG = flow.getContext('2d');
       this._scoreEls = {
@@ -1204,12 +1205,12 @@
         // ---- TAB 块 + 品号 ----
         for (const n of ev.notes) {
           const y = tabTop + (n.string + 0.5) * rh;
-          let fill = '#efe9d5', text = C.ink2;
+          let fill = '#f2f2ef', text = C.ink2;
           if (outcome?.kind === 'hit' || hitK > 0) { fill = C.sage; text = '#fdf9f0'; }
           else if (outcome?.kind === 'skipped') { fill = '#b8907f'; text = '#fff'; }
           else if (outcome?.kind === 'wrong') { fill = '#a85646'; text = '#fff'; }
           else if (isCur || sounding) { fill = C.clay; text = '#fdf9f0'; }
-          else if (ev.startBeat + ev.durBeats <= view) { fill = '#eae4cf'; text = C.ink3; }
+          else if (ev.startBeat + ev.durBeats <= view) { fill = '#ededeb'; text = C.ink3; }
           _rr(g, x0 + 1 * dpr, y - 3.6 * dpr, Math.max(4 * dpr, x1 - x0 - 2 * dpr), 7.2 * dpr, 2.5 * dpr, fill,
             isCur || sounding ? C.clayDeep : null);
           if (x1 - x0 > 16 * dpr) {

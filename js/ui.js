@@ -351,6 +351,8 @@
       $('btn-compare').addEventListener('click', () => {
         eng.setSourceMode('synth');
         eng.resume();
+        this.setWorkspace('analysis');
+        document.querySelector('#viz-tabs .tab[data-tab="spectrum"]').click();
         eng.demoCompare();
         this.setStatus('对比中：小提琴 2.2s → 钢琴。峰值保持线会留下两者的频谱轮廓');
       });
@@ -548,6 +550,7 @@
         if (!btn) return;
         for (const t of document.querySelectorAll('#viz-tabs .tab')) t.classList.toggle('active', t === btn);
         const tab = btn.dataset.tab;
+        if (tab !== 'fretboard') this.analysisTab = tab;
         app.viz.setTab(tab);
         const panes = {
           spectrum: 'canvas-spectrum',
@@ -573,6 +576,19 @@
         $('btn-analyze').classList.add('hidden');
         document.querySelector('#viz-tabs .tab[data-tab="analysis"]').classList.add('hidden');
       }
+      $('workspace-nav').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-workspace]');
+        if (btn) this.setWorkspace(btn.dataset.workspace);
+      });
+      $('quick-load-score').addEventListener('click', () => {
+        this.setWorkspace('practice');
+        app.trainer._btnScore.click();
+      });
+      $('quick-connect').addEventListener('click', () => {
+        $('source-select').value = 'mic';
+        $('source-select').dispatchEvent(new Event('change'));
+        if (!eng.mic) $('btn-mic').click();
+      });
       const ANALYSIS_SR = 22050;
       // 没加载文件时，用 OfflineAudioContext 渲染内置小提琴 A4 当演示素材
       const renderDemoPcm = async () => {
@@ -638,6 +654,7 @@
           }
           // 4) 切到分析视图，前端只负责把结果画出来
           //    （同步调用：rAF 在页面切到后台时不会执行，分析结果会丢）
+          this.setWorkspace('analysis');
           document.querySelector('#viz-tabs .tab[data-tab="analysis"]').click();
           this.app.viz.drawAnalysis(data);
           const s = data.summary;
@@ -686,6 +703,39 @@
       this.setStatus(restored
         ? '已恢复上次的机架状态 —— 连接输入即可回到你上次的音色'
         : '按住发声，松手即停；Esc 或"全停"随时静音。松手后的余音是 Delay 回声在自然衰减');
+      this.setWorkspace('practice');
+    },
+
+    setWorkspace(workspace) {
+      if (!['practice', 'tone', 'analysis'].includes(workspace)) return;
+      const copy = {
+        practice: ['MENTOR / PLAY', '听见进步，弹得更好。',
+          '连接吉他，载入曲谱。Mentor 会跟着你的弹奏移动乐谱，并给出音高与节奏反馈。'],
+        tone: ['MENTOR / SOUND', '找到属于你的音色。',
+          '从音色组合开始，再调整每一个效果器。你的设置会保存在这台设备的浏览器里。'],
+        analysis: ['MENTOR / INSIGHT', '看清声音里的细节。',
+          '频谱、波形与频谱图是进阶观察工具；需要时打开，不打断演奏与调音色。'],
+      };
+      document.body.dataset.workspace = workspace;
+      $('workspace-kicker').textContent = copy[workspace][0];
+      $('workspace-title').textContent = copy[workspace][1];
+      $('workspace-description').textContent = copy[workspace][2];
+      for (const button of document.querySelectorAll('#workspace-nav [data-workspace]')) {
+        const active = button.dataset.workspace === workspace;
+        button.classList.toggle('active', active);
+        if (active) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+      }
+      if (workspace === 'practice') {
+        document.querySelector('#viz-tabs .tab[data-tab="fretboard"]').click();
+      } else if (workspace === 'analysis') {
+        const tab = document.querySelector(`#viz-tabs .tab[data-tab="${this.analysisTab || 'spectrum'}"]`);
+        (tab && !tab.classList.contains('hidden') ? tab :
+          document.querySelector('#viz-tabs .tab[data-tab="spectrum"]')).click();
+      } else {
+        this.app.viz.setTab('none');
+      }
+      requestAnimationFrame(() => this.app.viz.forceResize());
     },
 
     exitAB() {

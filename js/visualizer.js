@@ -84,7 +84,7 @@
         }
         sg.width = sw; sg.height = sh;
         const g = sg.getContext('2d');
-        g.fillStyle = '#fbf9f2'; g.fillRect(0, 0, sw, sh);
+        g.fillStyle = '#ffffff'; g.fillRect(0, 0, sw, sh);
         if (keep) g.drawImage(keep, 0, 0, keep.width, keep.height, 0, 0, sw, sh);
       }
       const an = this.cv.analysis;
@@ -281,7 +281,7 @@
       const c = this.cv.wave, g = c.getContext('2d');
       const W = c.width, H = c.height;
       g.setTransform(1, 0, 0, 1, 0, 0);
-      g.fillStyle = '#fbf9f2';
+      g.fillStyle = '#ffffff';
       g.fillRect(0, 0, W, H);
       // 中线与削波线
       g.strokeStyle = 'rgba(70,62,48,0.18)';
@@ -360,7 +360,7 @@
       const g = c.getContext('2d');
       const W = c.width, H = c.height;
       g.setTransform(1, 0, 0, 1, 0, 0);
-      g.fillStyle = '#fbf9f2';
+      g.fillStyle = '#ffffff';
       g.fillRect(0, 0, W, H);
       const dpr = this.dpr;
       const { freqs, times, db, dbMin, dbMax } = data.spectrogram;

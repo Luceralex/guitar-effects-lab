@@ -3,75 +3,61 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>效果器可视化实验室</title>
-<link rel="stylesheet" href="css/style.css?v=22">
+<title>Mentor · 音色与弹奏助手</title>
+<meta name="theme-color" content="#ffffff">
+<meta name="description" content="Mentor 是在浏览器里运行的吉他效果器与实时曲谱弹奏助手。">
+<link rel="icon" href="assets/mentor-icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css?v=23">
 </head>
-<body>
+<body data-workspace="practice">
 
 <header id="topbar">
-  <div class="hero">
-    <div class="brand">
-      <svg class="mark" viewBox="0 0 28 28" width="30" height="30" aria-hidden="true">
-        <g stroke="#bf5233" stroke-width="2.4" stroke-linecap="round" fill="none">
-          <line x1="14" y1="2.5" x2="14" y2="10.2"/>
-          <line x1="14" y1="17.8" x2="14" y2="25.5"/>
-          <line x1="2.5" y1="14" x2="10.2" y2="14"/>
-          <line x1="17.8" y1="14" x2="25.5" y2="14"/>
-          <line x1="6" y1="6" x2="11.4" y2="11.4"/>
-          <line x1="16.6" y1="16.6" x2="22" y2="22"/>
-          <line x1="22" y1="6" x2="16.6" y2="11.4"/>
-          <line x1="11.4" y1="16.6" x2="6" y2="22"/>
-          <line x1="9.5" y1="3.6" x2="12.6" y2="9.3"/>
-          <line x1="18.5" y1="24.4" x2="15.4" y2="18.7"/>
-        </g>
-      </svg>
-      <div>
-        <h1>效果器可视化实验室</h1>
-        <p class="sub">用眼睛看见声音</p>
-      </div>
+  <div class="site-nav">
+    <a class="brand" href="#topbar" aria-label="Mentor 首页">
+      <img src="assets/mentor-logo.svg" width="190" height="54" alt="Mentor">
+      <span>音乐导师</span>
+    </a>
+    <nav id="workspace-nav" aria-label="主要工作区">
+      <button class="workspace-tab active" type="button" data-workspace="practice" aria-current="page">弹奏助手</button>
+      <button class="workspace-tab" type="button" data-workspace="tone">音色工作台</button>
+      <button class="workspace-tab" type="button" data-workspace="analysis">音频分析</button>
+    </nav>
+    <div class="nav-actions">
+      <span class="privacy-note"><i></i> 实时音频仅在本机处理</span>
+      <button class="btn text-btn" id="btn-help">使用说明</button>
     </div>
-    <!-- 手绘墨线涂鸦：谐波节点 · 拱桥 · 星芒 · 正弦 -->
-    <svg class="doodles" viewBox="0 0 190 96" aria-hidden="true">
-      <rect x="118" y="8" width="26" height="26" rx="3" fill="#dcd5c1"/>
-      <g stroke="#211e19" stroke-width="1.8" fill="#211e19">
-        <line x1="20" y1="20" x2="55" y2="12"/>
-        <line x1="20" y1="20" x2="48" y2="40"/>
-        <line x1="55" y1="12" x2="48" y2="40"/>
-        <line x1="20" y1="20" x2="78" y2="24"/>
-        <circle cx="20" cy="20" r="3.4" stroke="none"/>
-        <circle cx="55" cy="12" r="2.6" stroke="none"/>
-        <circle cx="48" cy="40" r="2.6" stroke="none"/>
-        <circle cx="78" cy="24" r="2.2" stroke="none"/>
-      </g>
-      <g stroke="#211e19" stroke-width="2" stroke-linecap="round" fill="none">
-        <line x1="132" y1="44" x2="132" y2="56"/>
-        <line x1="123" y1="50" x2="133" y2="50"/>
-        <line x1="126" y1="42" x2="136" y2="50"/>
-        <line x1="124" y1="60" x2="131" y2="54"/>
-        <line x1="140" y1="42" x2="134" y2="49"/>
-      </g>
-      <g stroke="#211e19" stroke-width="2.2" fill="none" stroke-linecap="round">
-        <path d="M14 92 C 14 70, 52 70, 52 92"/>
-        <path d="M20 92 C 20 76, 46 76, 46 92"/>
-        <path d="M26 92 C 26 82, 40 82, 40 92"/>
-        <line x1="33" y1="86" x2="33" y2="94"/>
-      </g>
-      <path d="M96 88 Q 104 76, 112 88 T 128 88 T 144 88 T 160 88 T 176 88"
-            fill="none" stroke="#bf5233" stroke-width="2.4" stroke-linecap="round"/>
-    </svg>
   </div>
+</header>
+
+<main>
+  <section id="workspace-intro" aria-labelledby="workspace-title">
+    <div>
+      <p class="eyebrow" id="workspace-kicker">MENTOR / PLAY</p>
+      <h1 id="workspace-title">听见进步，弹得更好。</h1>
+      <p id="workspace-description">连接吉他，载入曲谱。Mentor 会跟着你的弹奏移动乐谱，并给出音高与节奏反馈。</p>
+    </div>
+    <div class="workspace-actions">
+      <button class="btn primary" id="quick-load-score">载入乐谱 <span aria-hidden="true">↗</span></button>
+      <button class="btn" id="quick-connect">连接吉他</button>
+    </div>
+  </section>
 
   <div class="transport">
-    <div class="src-group">
-      <select id="source-select">
-        <option value="synth">内置音源</option>
-        <option value="file">音频文件</option>
-        <option value="mic">麦克风 / 电吉他</option>
-      </select>
-    </div>
+    <section class="source-card" aria-label="音频输入">
+      <div class="card-title"><span>01 / 音频输入</span><small>选择你要处理或练习的声音</small></div>
+      <div class="src-group">
+        <label for="source-select">声音来源</label>
+        <select id="source-select">
+          <option value="synth">内置音源</option>
+          <option value="file">音频文件</option>
+          <option value="mic">麦克风 / 电吉他</option>
+        </select>
+      </div>
 
     <!-- 内置音源 -->
-    <div id="synth-panel" class="src-panel">
+    <details id="synth-panel" class="demo-details">
+      <summary>展开内置乐器与试听键盘 <span aria-hidden="true">↗</span></summary>
+      <div class="synth-inner">
       <div class="row" id="instrument-row">
         <button class="btn chip active" data-inst="violin">小提琴</button>
         <button class="btn chip" data-inst="piano">钢琴</button>
@@ -90,7 +76,8 @@
         <button class="btn note" data-note="880.00">A5</button>
         <button class="btn primary" id="btn-compare">小提琴 vs 钢琴</button>
       </div>
-    </div>
+      </div>
+    </details>
 
     <!-- 音频文件 -->
     <div id="file-panel" class="src-panel hidden">
@@ -116,31 +103,34 @@
       <span class="hint" id="mic-hint">选择输入并连接，弹琴时观察频谱；输出可选系统扬声器或音频接口</span>
       <span class="hint" id="latency-info"></span>
     </div>
+    </section>
 
-    <div class="master-group">
-      <label>音量</label>
-      <input type="range" id="master-volume" min="0" max="1" step="0.01" value="0.8" title="监听音量">
-      <button class="btn" id="btn-panic" title="停止软件音源：音符、文件、麦克风与噪声（快捷键 Esc）">全停</button>
-      <button class="btn" id="btn-ab" title="一键旁路所有效果器，对比处理前后">A/B</button>
-      <button class="btn" id="btn-help">原理讲解</button>
-    </div>
+    <section class="monitor-card" aria-label="监听与读数">
+      <div class="card-title"><span>02 / 监听</span><small>音量与信号状态</small></div>
+      <div class="master-group">
+        <label for="master-volume">监听音量</label>
+        <input type="range" id="master-volume" min="0" max="1" step="0.01" value="0.8" title="监听音量">
+        <div class="monitor-actions">
+          <button class="btn" id="btn-panic" title="停止软件音源：音符、文件、麦克风与噪声（快捷键 Esc）">全部停止</button>
+          <button class="btn" id="btn-ab" title="一键旁路所有效果器，对比处理前后">A/B 对比</button>
+        </div>
+      </div>
+      <div class="readouts">
+        <span class="ro"><b id="ro-f0">—</b><i>基频</i></span>
+        <span class="ro"><b id="ro-note">—</b><i>音名</i></span>
+        <span class="ro"><b id="ro-rms">—</b><i>电平</i></span>
+        <span class="ro"><b id="ro-thd">—</b><i>失真</i></span>
+        <span class="ro"><b id="ro-sr">—</b><i>采样率</i></span>
+      </div>
+    </section>
   </div>
-</header>
 
-<main>
   <nav id="viz-tabs">
     <button class="tab active" data-tab="spectrum">频谱</button>
     <button class="tab" data-tab="wave">波形</button>
     <button class="tab" data-tab="spectrogram">频谱图</button>
     <button class="tab" data-tab="fretboard">指板</button>
     <button class="tab" data-tab="analysis">分析</button>
-    <span class="readouts">
-      <span class="ro"><b id="ro-f0">—</b><i>基频</i></span>
-      <span class="ro"><b id="ro-note">—</b><i>音名</i></span>
-      <span class="ro"><b id="ro-rms">—</b><i>电平</i></span>
-      <span class="ro"><b id="ro-thd">—</b><i>失真</i></span>
-      <span class="ro"><b id="ro-sr">—</b><i>采样率</i></span>
-    </span>
   </nav>
 
   <section id="viz-area">
@@ -182,7 +172,7 @@
     </div>
 
     <div id="spectrum-legend">
-      <span class="lg"><i class="sw" style="color:#bf5233"></i>输出</span>
+      <span class="lg"><i class="sw" style="color:#bd6447"></i>输出</span>
       <span class="lg"><i class="sw thin" style="color:#a29a88"></i>输入</span>
       <span class="lg"><i class="sw dashed" style="color:#5e7d83"></i>EQ 频响</span>
       <span class="lg"><i class="sw thin" style="color:#a8842c"></i>峰值保持</span>
@@ -191,12 +181,13 @@
     </div>
     <div id="drop-hint" class="hidden">松手载入音频文件</div>
   </section>
-</main>
+
+  <p id="analysis-note">用于检查频率、波形与动态表现的详细视图。实时演奏与音色调节请使用上方两个工作区。</p>
 
 <section id="rack-section">
   <div class="rack-head">
-    <h2>效果器机架</h2>
-    <span class="hint">信号链：Gate → Wah → Comp → Drive → EQ → 调制 → Delay → Reverb</span>
+    <div><p class="eyebrow">SIGNAL CHAIN</p><h2>塑造你的声音</h2></div>
+    <span class="hint">Gate → Wah → Comp → Drive → EQ → 调制 → Delay → Reverb</span>
     <span class="preset-group">
       <label>音色组合</label>
       <select id="preset-select" title="大牌效果器的经典组合"></select>
@@ -205,13 +196,21 @@
   </div>
   <div id="effects-rack"></div>
 </section>
+</main>
 
 <footer id="statusbar"><span id="status-text"></span></footer>
 
-<!-- 原理讲解 -->
+<!-- 使用说明与可选的原理资料 -->
 <div id="modal" class="hidden">
   <div class="modal-panel">
     <button class="btn close" id="btn-close-modal">关闭</button>
+    <h2>开始使用 Mentor</h2>
+    <ol>
+      <li><b>弹奏助手：</b>连接吉他输入，载入示例或自己的六线谱 / MusicXML；在指板上看目标音和实时反馈。</li>
+      <li><b>音色工作台：</b>选一个音色组合，再打开效果器卡片调整。A/B 可以对比处理前后。</li>
+      <li><b>音频分析：</b>需要检查频谱、波形或文件深度分析时再进入。内置乐器与试听键盘可在音频输入卡片里展开。</li>
+    </ol>
+    <details class="theory-details"><summary>展开声音与效果器原理资料</summary>
     <h2>为什么小提琴和钢琴拉同一个 440Hz，音色完全不同？</h2>
     <p><b>音高</b>由基频决定（440Hz = A4，决定你听到的是哪个音），<b>音色</b>由泛音（谐波）结构决定。
       440Hz 只是频谱上最左边那根峰（基频 f0），小提琴和钢琴在 880、1320、1760…（第 2、3、4 次谐波）处的峰完全不同：</p>
@@ -247,17 +246,18 @@
       <li>Chorus 深度拉满 → 频谱峰变宽；对比开/关用"A/B"。</li>
       <li>加载你自己的音乐文件，用 EQ 抠"人声频段"（约 300Hz–3kHz）感受频率与听感对应关系。</li>
     </ol>
+    </details>
   </div>
 </div>
 
 <script src="js/dsp.js?v=18"></script>
 <script src="js/effects.js?v=16"></script>
 <script src="js/audio-engine.js?v=19"></script>
-<script src="js/visualizer.js?v=16"></script>
+<script src="js/visualizer.js?v=17"></script>
 <script src="js/score.js?v=26"></script>
 <script src="js/practice.js?v=1"></script>
-<script src="js/fretboard.js?v=38"></script>
-<script src="js/ui.js?v=26"></script>
+<script src="js/fretboard.js?v=39"></script>
+<script src="js/ui.js?v=27"></script>
 <script src="js/main.js?v=20"></script>
 </body>
 </html>

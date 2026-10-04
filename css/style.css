@@ -355,3 +355,196 @@ canvas { display: block; width: 100%; height: 100%; }
   .readouts { display: none; }
   .brand h1 { font-size: 24px; }
 }
+
+/* ============================================================
+ * Mentor：以演奏和音色为中心的工作区。图表保留在分析入口。
+ * ============================================================ */
+:root {
+  --paper: #ffffff;
+  --paper-2: #ffffff;
+  --paper-3: #f4f4f1;
+  --plate: #ffffff;
+  --ink: #191919;
+  --ink-2: #60615e;
+  --ink-3: #858681;
+  --line: #e9e9e5;
+  --line-2: #dbdcd6;
+  --clay: #bd6447;
+  --clay-deep: #9b4a34;
+  --green: #6f7d5c;
+  --serif: "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  --display: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+}
+body { background: #fcfcfa; font: 14px/1.55 var(--serif); }
+button, select, input { font-family: var(--serif); }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--clay); outline-offset: 3px;
+}
+
+/* 顶部品牌与主导航 */
+#topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: block; padding: 0;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+}
+.site-nav {
+  max-width: 1520px; min-height: 76px; margin: auto; padding: 10px 40px;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px;
+}
+.brand { display: inline-flex; align-items: center; gap: 12px; width: max-content; color: var(--ink); text-decoration: none; }
+.brand img { display: block; width: 174px; height: auto; }
+.brand span { border-left: 1px solid var(--line-2); padding-left: 12px; color: var(--ink-2); font-size: 11px; letter-spacing: .08em; white-space: nowrap; }
+#workspace-nav { display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 100px; background: #f4f4f1; }
+.workspace-tab {
+  border: 0; background: transparent; color: var(--ink-2); border-radius: 100px;
+  padding: 9px 17px; font: 600 13px var(--serif); white-space: nowrap; cursor: pointer;
+  transition: color .18s, background .18s, box-shadow .18s;
+}
+.workspace-tab:hover { color: var(--ink); }
+.workspace-tab.active { color: var(--ink); background: #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, .09); }
+.nav-actions { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
+.privacy-note { color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+.privacy-note i { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #779777; vertical-align: 1px; }
+.btn.text-btn { border: 0; background: transparent; padding: 5px 0; color: var(--ink-2); }
+
+/* 工作区标题与入口 */
+main { display: block; width: min(100%, 1520px); margin: 0 auto; padding: 0 40px 72px; }
+#workspace-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; padding: 44px 0 28px; }
+.eyebrow { margin: 0 0 10px; color: var(--clay-deep); font: 700 11px var(--serif); letter-spacing: .16em; }
+#workspace-intro h1 { margin: 0; font: 400 clamp(34px, 3.7vw, 53px)/1.16 var(--display); letter-spacing: -.045em; }
+#workspace-description { max-width: 720px; margin: 14px 0 0; color: var(--ink-2); font-size: 14px; line-height: 1.75; }
+.workspace-actions { display: flex; gap: 8px; padding-bottom: 3px; flex: none; }
+body:not([data-workspace="practice"]) .workspace-actions { display: none; }
+.workspace-actions .btn { padding: 11px 18px; border-radius: 9px; font-size: 13px; }
+.workspace-actions .btn.primary { background: var(--ink); border-color: var(--ink); }
+.workspace-actions .btn.primary span { margin-left: 12px; font-size: 16px; font-weight: 400; }
+
+/* 音频来源与监听分栏。试听键盘放入按需展开区。 */
+.transport { display: grid; grid-template-columns: minmax(0, 1.38fr) minmax(330px, .82fr); gap: 16px; padding: 0; }
+.source-card, .monitor-card {
+  min-width: 0; min-height: 168px; padding: 21px 23px;
+  background: #fff; border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 5px 25px rgba(20, 20, 20, .035);
+}
+.card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 15px; margin-bottom: 17px; }
+.card-title span { color: var(--ink); font-weight: 700; font-size: 13px; }
+.card-title small { color: var(--ink-3); font-size: 11px; }
+.src-group { gap: 14px; }
+.src-group label, .master-group label { color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.src-group select { flex: 1; max-width: 320px; padding: 9px 12px; }
+.src-panel { margin-top: 17px; gap: 10px; }
+.dev-row { flex-wrap: wrap; gap: 8px; }
+.dev-row select { min-width: 155px; flex: 1; }
+#mic-panel .hint { width: 100%; }
+.demo-details { margin-top: 17px; border-top: 1px solid var(--line); padding-top: 12px; }
+.demo-details summary { display: flex; justify-content: space-between; align-items: center; list-style: none; color: var(--ink-2); font-size: 12px; cursor: pointer; }
+.demo-details summary::-webkit-details-marker { display: none; }
+.demo-details summary span { font-size: 16px; color: var(--ink-3); transition: transform .2s; }
+.demo-details[open] summary span { transform: rotate(45deg); }
+.synth-inner { display: grid; gap: 13px; padding-top: 18px; }
+.synth-inner .row { gap: 7px; }
+.synth-inner .row .hint { flex: 1 1 100%; }
+.btn, select { border-radius: 8px; }
+.btn { padding: 7px 12px; font-size: 12.5px; }
+.btn:hover { background: #f9f8f6; }
+.btn.chip.active, .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn.primary:hover { background: #343434; }
+.monitor-card { display: flex; flex-direction: column; }
+.master-group { display: grid; grid-template-columns: auto minmax(80px, 1fr); align-items: center; gap: 12px 16px; }
+.master-group input[type=range] { width: 100%; }
+.monitor-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+.readouts { margin: auto 0 0; padding-top: 20px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; border-top: 1px solid var(--line); }
+.ro { align-items: flex-start; min-width: 0; }
+.ro b { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ro i { font-size: 10px; }
+
+/* 主舞台：弹奏为默认，分析图从主导航进入。 */
+#viz-tabs { margin-top: 30px; padding: 0; gap: 20px; }
+body:not([data-workspace="analysis"]) #viz-tabs { display: none; }
+#viz-tabs .tab[data-tab="fretboard"] { display: none; }
+.tab { font: 600 13px var(--serif); padding: 7px 1px 11px; }
+#viz-area { margin: 24px 0 0; height: clamp(380px, 48vh, 580px); background: #fff; border-radius: 16px; box-shadow: 0 5px 25px rgba(20, 20, 20, .03); }
+body[data-workspace="tone"] #viz-area { display: none; }
+#viz-area.tall { height: clamp(500px, 64vh, 760px); }
+#viz-area.tall.scoring { height: clamp(680px, 82vh, 960px); }
+#trainer-ctrl { padding: 16px 20px; gap: 10px 18px; background: #fff; }
+#trainer-ctrl > label { color: var(--ink-2); }
+#trainer-strip { padding: 13px 20px; background: #fafaf8; }
+.t-block { padding: 0 24px; }
+.t-hint { max-width: 42%; }
+#score-strip { padding: 14px 20px; gap: 12px; background: #fff; }
+.ss-transport { gap: 8px 14px; }
+.ss-transport .btn { padding: 6px 11px; }
+.ss-transport .ss-latency { width: 80px; }
+#canvas-scoreflow { height: 174px; background: #fff; }
+#analysis-note { display: none; max-width: 640px; margin: 15px 0; color: var(--ink-3); font-size: 12px; }
+body[data-workspace="analysis"] #analysis-note { display: block; }
+
+/* 音色机架使用独立卡片，参数不再横向挤成一条。 */
+#rack-section { padding: 45px 0 0; }
+body:not([data-workspace="tone"]) #rack-section { display: none; }
+.rack-head { align-items: flex-end; gap: 12px 24px; margin-bottom: 24px; }
+.rack-head .eyebrow { margin-bottom: 7px; }
+.rack-head h2 { font: 400 31px/1.2 var(--display); letter-spacing: -.03em; }
+.rack-head .hint { margin-bottom: 5px; }
+.preset-group { margin-left: auto; }
+#effects-rack { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+.fx-card { max-width: none; min-width: 0; padding: 19px; border: 1px solid var(--line); border-radius: 14px; background: #fff; gap: 13px; }
+.fx-head h3 { font-size: 14px; }
+.prm { grid-template-columns: 76px minmax(0, 1fr) 62px; }
+
+#statusbar { width: 100%; padding: 13px max(40px, calc((100vw - 1440px) / 2)); background: #fff; color: var(--ink-2); }
+.modal-panel { background: #fff; border-color: var(--line); box-shadow: 0 25px 80px rgba(0, 0, 0, .15); }
+.theory-details { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.theory-details summary { cursor: pointer; color: var(--ink-2); font-weight: 600; }
+
+@media (max-width: 1100px) {
+  .site-nav { grid-template-columns: auto 1fr; padding-inline: 26px; }
+  #workspace-nav { justify-self: end; }
+  .nav-actions { display: none; }
+  main { padding-inline: 26px; }
+  .transport { grid-template-columns: 1fr; }
+  .source-card, .monitor-card { min-height: 0; }
+  .monitor-card { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(290px, 1fr); gap: 0 24px; }
+  .monitor-card .card-title { grid-column: 1 / -1; }
+  .readouts { padding-top: 0; border-top: 0; align-self: center; }
+}
+@media (max-width: 700px) {
+  #topbar { position: static; }
+  .site-nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 11px 18px; }
+  .brand img { width: 148px; }
+  .brand span { font-size: 10px; }
+  #workspace-nav { width: 100%; justify-content: space-between; }
+  .workspace-tab { flex: 1; padding: 8px 7px; font-size: 12px; }
+  main { padding-inline: 16px; }
+  #workspace-intro { display: block; padding: 32px 0 23px; }
+  #workspace-intro h1 { font-size: 35px; }
+  #workspace-description { margin-top: 10px; }
+  .workspace-actions { margin-top: 22px; }
+  .source-card, .monitor-card { padding: 18px; }
+  .monitor-card { display: flex; }
+  .readouts { width: 100%; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .card-title small { display: none; }
+  .src-group { flex-wrap: wrap; }
+  .src-group select { flex: 1 1 180px; }
+  #viz-area { margin-top: 18px; }
+  #viz-area.tall { height: 690px; }
+  #viz-area.tall.scoring { height: 870px; }
+  #trainer-ctrl, #score-strip { padding: 12px; }
+  #trainer-strip { padding: 10px 12px; flex-wrap: wrap; gap: 10px 0; }
+  .t-block { padding: 0 13px; }
+  .t-hint { width: 100%; max-width: none; margin: 0; text-align: left; }
+  #canvas-scoreflow { height: 145px; }
+  .rack-head { display: block; }
+  .preset-group { display: flex; flex-wrap: wrap; margin-top: 16px; }
+  .preset-group select { min-width: 0; flex: 1; }
+  #statusbar { padding-inline: 16px; }
+}
+@media (max-width: 420px) {
+  .readouts { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .workspace-actions .btn { padding: 10px 12px; }
+  #viz-area.tall { height: 760px; }
+  #viz-area.tall.scoring { height: 970px; }
+}
