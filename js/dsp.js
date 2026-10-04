@@ -210,43 +210,67 @@
     };
   }
 
-  /* ---------- 9. 吉他单音检测（指板训练器用） ----------
-   * 电吉他弹单音时，频谱上除了主频还有一串泛音，而且第 2、3 次
-   * 泛音有时比主频还响（低音弦尤其明显）。所以不能只认"最高的峰"：
-   *   1) 电平门限：RMS 低于门限就当静音（手指搭弦、底噪都不算）；
-   *   2) 加 Hann 窗做 FFT，在吉他音域 [fmin, fmax] 里找最强峰；
-   *   3) 八度纠错：若 f0/2（甚至 f0/3）处也有接近的能量，说明最强峰
-   *      其实是泛音，真正的基频在下面 —— 逐级往下修；
-   *   4) 对最终基频做抛物线插值细化，并用"峰高出噪底多少 dB"
-   *      作为置信度（0~1），给调用方决定信不信这次结果。
-   * 返回 { hz, level, conf }；判定为静音返回 null。 */
+  /* ---------- 9. 吉他单音检测（短窗 YIN 周期估计） ----------
+   * 最强频谱峰可能是第二泛音，因而不能用它当基频。比较波形与
+   * 各个延迟后的波形：真正的周期会让差值接近 0。CMNDF 归一化
+   * 消除短延迟偏置；取全局最好周期附近最早的谷值，避免倍周期。
+   * 只用最新约 170ms，缩短换音后的旧音残留；先平均降采样，避免
+   * 高频谐波混叠。谱面和弦不强行当作高置信单音。
+   * scratch 由调用者复用，减少每 30ms 一次的 GC 分配。 */
   function detectPitch(samples, sampleRate, scratch, opts) {
     opts = opts || {};
     const fmin = opts.fmin || 70, fmax = opts.fmax || 1320;
     const gateDb = opts.gateDb == null ? -48 : opts.gateDb;
-    const levelDb = linToDb(rms(samples));
+    const decimation = Math.max(1, Math.round(sampleRate / 12000));
+    const count = Math.floor(Math.min(samples.length, 8192) / decimation);
+    if (count < 256) return null;
+    const start = samples.length - count * decimation;
+    let levelSum = 0;
+    for (let i = start; i < samples.length; i++) levelSum += samples[i] * samples[i];
+    const levelDb = linToDb(Math.sqrt(levelSum / (samples.length - start)));
     if (levelDb < gateDb) return null;
-    const { db, binHz } = computeSpectrum(samples, sampleRate, scratch);
-    const p = findPeak(db, binHz, fmin, fmax);
-    if (p.db < gateDb + 6) return null;          // 谱峰太弱同样当静音
-    let f0 = p.hz;
-    for (let i = 0; i < 2; i++) {                // 八度纠错，最多下探两个八度
-      const half = f0 / 2;
-      if (half < fmin) break;
-      if (dbAtFreq(db, binHz, half) > dbAtFreq(db, binHz, f0) - 7) f0 = half; else break;
+    scratch = scratch || {};
+    if (!scratch.yin || scratch.yin.length !== count) scratch.yin = new Float32Array(count);
+    const x = scratch.yin;
+    for (let i = 0; i < count; i++) {
+      let sum = 0;
+      const j = start + i * decimation;
+      for (let k = 0; k < decimation; k++) sum += samples[j + k];
+      x[i] = sum / decimation;
     }
-    const third = f0 / 3;                        // 纯五度下探：低音弦 3 次谐波常偏强
-    if (third >= fmin && dbAtFreq(db, binHz, third) > dbAtFreq(db, binHz, f0) - 6) f0 = third;
-    const ip = interpPeak(db, Math.round(f0 / binHz));
-    const hz = Math.max(fmin, (ip.k + ip.off) * binHz);
-    // 置信度：峰相对频谱中位噪底的突出程度（干净单音通常轻松打满）
-    const lo = Math.max(1, Math.ceil(60 / binHz));
-    const hi = Math.min(db.length - 2, Math.floor(1400 / binHz));
-    const seg = [];
-    for (let k = lo; k <= hi; k += 2) seg.push(db[k]);
-    seg.sort((a, b) => a - b);
-    const floor = seg.length ? seg[seg.length >> 1] : -120;
-    const conf = Math.max(0, Math.min(1, (ip.db - floor) / 26));
+    const rate = sampleRate / decimation;
+    const minTau = Math.max(2, Math.floor(rate / fmax));
+    const maxTau = Math.min(count >> 1, Math.ceil(rate / fmin));
+    if (!scratch.diff || scratch.diff.length <= maxTau) scratch.diff = new Float32Array(maxTau + 1);
+    const diff = scratch.diff;
+    const compareCount = count - maxTau;
+    let running = 0, bestTau = 0, bestVal = Infinity;
+    for (let tau = 1; tau <= maxTau; tau++) {
+      let sum = 0;
+      for (let i = 0; i < compareCount; i++) {
+        const delta = x[i] - x[i + tau];
+        sum += delta * delta;
+      }
+      running += sum;
+      const value = running > 1e-12 ? (sum * tau) / running : 1;
+      diff[tau] = value;
+      if (tau >= minTau && value < bestVal) { bestVal = value; bestTau = tau; }
+    }
+    // 噪声或多音没有清晰的共同周期；宁可显示“不确定”也不误判。
+    if (bestVal > 0.22 || !bestTau) return null;
+    const nearBest = Math.max(0.045, bestVal * 1.35);
+    for (let tau = minTau + 1; tau < bestTau; tau++) {
+      if (diff[tau] <= nearBest && diff[tau] <= diff[tau - 1] && diff[tau] <= diff[tau + 1]) {
+        bestTau = tau;
+        break;
+      }
+    }
+    const a = diff[bestTau - 1], b = diff[bestTau], c = diff[bestTau + 1];
+    const denom = a - 2 * b + c;
+    const offset = denom > 1e-9 ? Math.max(-1, Math.min(1, 0.5 * (a - c) / denom)) : 0;
+    const hz = rate / (bestTau + offset);
+    if (hz < fmin || hz > fmax) return null;
+    const conf = Math.max(0, Math.min(1, 1 - b));
     return { hz, level: levelDb, conf };
   }
 
