@@ -274,9 +274,80 @@
     return { hz, level: levelDb, conf };
   }
 
+  /* ---------- 10. 已知目标和弦的保守证据检测 ----------
+   * 只检查谱面要求的音级：每个目标基频必须明显高于邻近频谱底噪。
+   * 同音级的八度叠音无法从一个吉他通道可靠拆开，故按音级合并；
+   * 只含一个音级的八度和弦标为 ambiguous，不声称已验证指法。
+   * 返回的 present / missing 是每个音级的最低目标 MIDI。 */
+  function detectChord(samples, sampleRate, targetMidis, scratch, opts) {
+    opts = opts || {};
+    const gateDb = opts.gateDb == null ? -48 : opts.gateDb;
+    if (!targetMidis || !targetMidis.length || linToDb(rms(samples)) < gateDb) return null;
+    scratch = scratch || {};
+    if (!scratch.re || scratch.re.length !== samples.length) {
+      scratch.re = new Float32Array(samples.length);
+      scratch.im = new Float32Array(samples.length);
+      scratch.win = hannWindow(samples.length);
+      scratch.db = new Float32Array(samples.length >> 1);
+    }
+    const { db, binHz } = computeSpectrum(samples, sampleRate, scratch);
+    const representatives = new Map();
+    for (const midi of targetMidis) {
+      if (!Number.isFinite(midi)) continue;
+      const pc = ((midi % 12) + 12) % 12;
+      if (!representatives.has(pc) || midi < representatives.get(pc)) representatives.set(pc, midi);
+    }
+    const evidence = [...representatives.values()].map((midi) => {
+      const hz = 440 * Math.pow(2, (midi - 69) / 12);
+      const bin = Math.round(hz / binHz);
+      const peak = dbAtFreq(db, binHz, hz);
+      const neighbors = [];
+      for (let k = Math.max(1, bin - 14); k <= Math.min(db.length - 1, bin + 14); k++) {
+        if (Math.abs(k - bin) > 2) neighbors.push(db[k]);
+      }
+      neighbors.sort((a, b) => a - b);
+      const floor = neighbors.length ? neighbors[neighbors.length >> 1] : -180;
+      return { midi, peak, prominence: peak - floor };
+    });
+    const strongest = Math.max(...evidence.map((e) => e.peak));
+    const present = [], missing = [];
+    for (const e of evidence) {
+      const found = e.peak >= Math.max(gateDb + 7, strongest - 23) && e.prominence >= 9;
+      (found ? present : missing).push(e.midi);
+    }
+    return {
+      present, missing,
+      complete: missing.length === 0 && representatives.size > 1,
+      ambiguous: representatives.size <= 1 && targetMidis.length > 1,
+    };
+  }
+
+  class OnsetTracker {
+    constructor(riseDb = 5, minGapMs = 90) {
+      this.riseDb = riseDb;
+      this.minGapMs = minGapMs;
+      this.lastDb = null;
+      this.lastOnsetMs = -Infinity;
+    }
+
+    update(levelDb, nowMs, gateDb = -48) {
+      const previous = this.lastDb;
+      this.lastDb = levelDb;
+      const active = levelDb > gateDb + 3;
+      const rose = previous == null ? active : levelDb - previous >= this.riseDb;
+      if (active && rose && nowMs - this.lastOnsetMs >= this.minGapMs) {
+        this.lastOnsetMs = nowMs;
+        return true;
+      }
+      return false;
+    }
+
+    reset() { this.lastDb = null; this.lastOnsetMs = -Infinity; }
+  }
+
   global.DSP = {
     fft, hannWindow, isPowerOfTwo, computeSpectrum,
     findPeak, dbAtFreq, estimateF0, analyzeHarmonics, thdFromHarmonics,
-    detectPitch, rms, noteName, linToDb, dbToLin,
+    detectPitch, detectChord, OnsetTracker, rms, noteName, linToDb, dbToLin,
   };
 })(window);

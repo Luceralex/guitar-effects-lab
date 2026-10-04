@@ -54,3 +54,32 @@ test('scratch buffers are reused between analysis frames', () => {
   assert.equal(scratch.yin, yin);
   assert.equal(scratch.diff, diff);
 });
+
+test('target chord needs every distinct pitch class', () => {
+  const target = [48, 52, 55]; // C3 E3 G3
+  const full = signal([[130.8128, 0.2], [164.8138, 0.18], [195.9977, 0.21]]);
+  const onlyC = signal([[130.8128, 0.3], [261.6256, 0.12], [392.4384, 0.08]]);
+  const found = DSP.detectChord(full, RATE, target, {}, {});
+  const partial = DSP.detectChord(onlyC, RATE, target, {}, {});
+  assert.equal(found.complete, true);
+  assert.deepEqual(Array.from(found.missing), []);
+  assert.equal(partial.complete, false);
+  assert.ok(partial.missing.includes(52));
+  assert.ok(partial.missing.includes(55));
+});
+
+test('octave-only voicing is explicitly ambiguous from one audio channel', () => {
+  const result = DSP.detectChord(signal([[82.4069, 0.3], [164.8138, 0.2]]), RATE, [40, 52], {}, {});
+  assert.equal(result.ambiguous, true);
+  assert.equal(result.complete, false);
+});
+
+test('onset tracker counts two attacks of the same held pitch but not sustain', () => {
+  const tracker = new DSP.OnsetTracker();
+  const frames = [
+    [0, -70], [25, -14], [50, -12], [75, -12], [100, -17],
+    [125, -23], [150, -12], [175, -11], [200, -11],
+  ];
+  const onsets = frames.filter(([time, level]) => tracker.update(level, time, -48)).map(([time]) => time);
+  assert.deepEqual(onsets, [25, 150]);
+});
