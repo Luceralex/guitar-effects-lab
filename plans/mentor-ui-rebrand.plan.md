@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | in-progress |
+| Status | complete |
 | Created | 2026-10-04 |
 | Ticket | N/A |
 | Branch | main |
@@ -81,8 +81,13 @@
 
 原启动与快捷方式使用旧实验室名称；改版后有 Mentor 启动入口与专用图标。
 
-### 3.1 [ ] 验证并发布
+### 3.1 [x] 验证并发布 *(completed 2026-10-04)*
 - **Files:** `server.py`, `make-shortcut.ps1`, `启动 Mentor.bat`, `tests/layout.test.cjs`
 - **What:** 本地静态资源路由、测试、启动快捷方式与线上资源验证。
 - **Acceptance:** 自动化测试通过，Git 工作区干净，公开页面载入新版资源。
 - **Dependencies:** 2.1
+
+**验收记录：** `npm test` 16 项通过，JS 语法、CSS 解析及 Python 编译通过；本地
+8765 首页、字标、图标和脚本均返回 HTTP 200。桌面 `Mentor.lnk` 指向新启动脚本并使用
+品牌图标。GitHub Pages 对提交 `f3e2c64` 的构建成功，在线首页、字标、样式和脚本均返回
+HTTP 200。真实设备手感与各浏览器外观仍需用户在本机查看。
