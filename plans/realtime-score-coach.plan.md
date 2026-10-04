@@ -62,7 +62,7 @@ flowchart LR
 - **Acceptance:** E2/E3 等单音正确；强谐波不会错八度；噪声/多音不作为高置信单音。
 - **Dependencies:** None
 
-### 1.2 [ ] 起音与目标和弦证据
+### 1.2 [x] 起音与目标和弦证据 *(completed 2026-10-04)*
 - **Files:** `js/dsp.js`, `js/fretboard.js`, `tests/dsp.test.cjs`
 - **What:** 分离起音时间与稳定确认时间，检测重弹；和弦按完整目标集合给出结果与不确定状态。
 - **Acceptance:** 同音两次拨弦计两次、长音只计一次；只弹和弦其中一音不能过关。
@@ -82,13 +82,13 @@ flowchart LR
 
 目前 MusicXML 映射可能留下缺少 `notes`/`midi` 的事件，小节号按平均长度推断。完成后，事件与小节时间轴由谱面实际结构决定，导入结果可安全播放和判定。
 
-### 2.1 [ ] 统一谱面事件与 MusicXML 时间轴
+### 2.1 [x] 统一谱面事件与 MusicXML 时间轴 *(completed 2026-10-04)*
 - **Files:** `js/score.js`, `tests/score.test.cjs`
 - **What:** 修正映射回写、声部/小节时间、转调八度、嵌套速度记号及不支持格式的提示。
 - **Acceptance:** 不可弹音不崩溃；每个映射音有有限 MIDI；多声部后下一小节起点正确。
 - **Dependencies:** None
 
-### 2.2 [ ] 六线谱时值与曲谱信息校验
+### 2.2 [x] 六线谱时值与曲谱信息校验 *(completed 2026-10-04)*
 - **Files:** `js/score.js`, `tests/score.test.cjs`, `README.md`
 - **What:** 保留 ASCII 六线谱的估计拍位但明确不确定性；校验小节边界和示例谱。
 - **Acceptance:** 示例谱事件可播放，休止/弱起等无法可靠推断的内容不被宣称为精确时值。
@@ -113,13 +113,13 @@ flowchart LR
 | 和弦事件 | 同时或快速琶音 | 已检测音、缺失音、不确定 |
 | 动态谱流 | 随演奏定位 | 当前音置于固定阅读区，已弹结果着色 |
 
-### 3.1 [ ] 独立的乐谱跟随与诊断状态机
+### 3.1 [x] 独立的乐谱跟随与诊断状态机 *(completed 2026-10-04)*
 - **Files:** `js/practice.js`, `js/fretboard.js`, `tests/practice.test.cjs`
 - **What:** 固定时间戳事件、音分容差、邻近事件纠错、完成态、时值与节拍评价。
 - **Acceptance:** ±45 音分真实生效；跳过一个音可恢复；完成后多弹不污染统计；有节拍基准才报告早晚。
 - **Dependencies:** 1.2, 2.2
 
-### 3.2 [ ] 和弦判定与动态谱流联动
+### 3.2 [x] 和弦判定与动态谱流联动 *(completed 2026-10-04)*
 - **Files:** `js/fretboard.js`, `css/style.css`, `index.html`, `tests/practice.test.cjs`
 - **What:** 接入目标和弦证据、手型提示、真实拍位小节线、按演奏推进的谱流与结果着色。
 - **Acceptance:** 只弹一个和弦音不通过；音符头落在起音位置；试听不会让练习游标提前跳或留在末尾。

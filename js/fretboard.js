@@ -3,8 +3,7 @@
  * ------------------------------------------------------------
  * 把"弹没弹对"变成看得见的东西：
  *   · 指板上标出所选音阶的全部位置（根音用陶土色实心标出）
- *   · 实时检测你弹的音 —— DSP.detectPitch：手写 FFT 找主频 +
- *     八度纠错（最强峰常是泛音，真基频在下面）
+ *   · 实时检测你弹的单音：短窗周期估计与置信度门限
  *   · 探索模式：检测环绿色 = 在调内，深红 = 调外
  *   · 闯关模式：指板闪烁提示下一个音，弹对自动前进、弹错连击清零
  *
@@ -33,7 +32,7 @@
   const MIDI_LO = STRINGS[STRINGS.length - 1];        // 40 = E2（指板最低音）
   const MIDI_HI = STRINGS[0] + MAX_FRET;              // 79（15 品高音 e）
   const TOL_CENTS = 45;    // 判"弹对"的容差：±45 音分（半音的一半）
-  const CONF_MIN = 0.3;    // 低于此置信度的检测结果不采信
+  const CONF_MIN = 0.78;   // 周期性不足的输入不冒充单音
   const SLOT_OPEN_MS = 150;   // 起音名额生效时刻：前 150ms 检测窗里还是旧音
   const SLOT_CLOSE_MS = 600;  // 名额作废时刻：一次拨弦只有一次判定机会
 
@@ -88,7 +87,9 @@
 
       /* 检测状态 */
       this.buf = new Float32Array(global.EngineNS.PITCH_FFT_SIZE);
-      this.scratch = null;         // DSP 复用缓冲（首帧自动建）
+      this.scratch = {};           // DSP 单音检测复用缓冲
+      this.chordScratch = {};      // 和弦谱证据检测复用 FFT 缓冲
+      this.onsets = new global.DSP.OnsetTracker();
       this.det = null;             // 最近一次有效检测 {hz, midiF, midi, cents, conf}
       this.hist = [];              // 最近 3 次检测的连续 midi 值
       this.stableMidi = null;
@@ -111,6 +112,7 @@
 
       /* 乐谱跟弹状态 */
       this.score = null;           // ScoreNS 解析结果（六线谱/MusicXML）
+      this.follower = null;
       this.scoreCursor = 0;        // 当前应弹事件下标
       this.bpm = 90;
       this.scoreAuto = null;       // 试听播放状态 {t0, beat0, idx}
@@ -119,10 +121,14 @@
       this._judgeCooldownUntil = 0; // 停止试听后的判定冷却（滤掉钢琴余音）
       this._flowBeat = 0;          // 乐谱流当前视口拍（带缓动）
       this._flowHits = new Map();  // 事件下标 → 命中时刻（乐谱流里的绿闪）
-      this._lvl = [];              // 最近几次检测的电平（dBFS），用于起音检测
-      this._wasRise = false;       // 上一帧是否在电平爬升（起音边沿检测用）
       this._pendingFire = false;   // 起音名额：一次拨弦 = 一次判定机会
       this._pendingFireAt = 0;
+      this._chordSeen = new Set();
+      this._chordStartAt = 0;
+      this._chordFired = false;
+      this._lastChordCheck = 0;
+      this._metronomeTimer = null;
+      this._metronomeNext = 0;
 
       this.ui = {
         detected: $(ids.detected), detHz: $(ids.detHz),
@@ -141,7 +147,7 @@
       this._timer = setInterval(() => {
         if (!this._isActive()) return;
         this.frame();
-      }, 33);
+      }, 25);
     }
 
     /* ---------- 控件 ---------- */
@@ -180,6 +186,7 @@
 
     /* ---------- 音阶 / 闯关序列 ---------- */
     _rebuild() {
+      this._resetDetection();
       this.scalePcs = new Set(SCALES[this.scale].steps.map((s) => (this.root + s) % 12));
       let start = MIDI_LO;
       while (start % 12 !== this.root) start++;
@@ -236,6 +243,18 @@
       return out;
     }
 
+    _resetDetection() {
+      this.hist.length = 0;
+      this.stableMidi = null;
+      this.holdMs = 0;
+      this.firedMidi = null;
+      this._pendingFire = false;
+      this.onsets.reset();
+      this._chordSeen.clear();
+      this._chordStartAt = 0;
+      this._chordFired = false;
+    }
+
     /* ---------- 每帧（仅指板页激活时被 main.js 调用） ---------- */
     frame() {
       const w = this.cv.clientWidth, h = this.cv.clientHeight;
@@ -248,9 +267,16 @@
         this._dpr = dpr;
       }
       const now = performance.now();
-      if (now - this._lastTick >= 28) {          // 检测 ~35Hz 足够，渲染每帧都跑
+      if (now - this._lastTick >= 22) {          // 检测约 40Hz，渲染每帧都跑
         this._lastTick = now;
         this._detect(now);
+        if (this.mode === 'score' && !this.scoreAuto && this.follower) {
+          const skipped = this.follower.tick(now);
+          if (skipped) {
+            this.scoreCursor = this.follower.cursor;
+            this.hint = skipped.message;
+          }
+        }
         this._updateStrip();
       }
       this._render(now);
@@ -269,19 +295,10 @@
       this._detTime = now;
       if (!eng.pitchAnalyser) return;
       eng.pitchAnalyser.getFloatTimeDomainData(this.buf);
-      // 短窗电平：取缓冲区最新的 ~2048 样本（≈43ms）算 RMS。
-      // 340ms 的测音窗会把音符间隙抹成一条平线，只有短窗能看见
-      // "拨了一下"的电平跳变（间隙 -38dB → 起音 -12dB）。
-      const recent = this.buf.subarray(Math.max(0, this.buf.length - 2048));
+      // 尾部约 21ms 的电平用于起音；测音本身使用较长的周期窗。
+      const recent = this.buf.subarray(Math.max(0, this.buf.length - 1024));
       const lvlNow = global.DSP.linToDb(global.DSP.rms(recent));
-      this._lvl.push(lvlNow);
-      if (this._lvl.length > 6) this._lvl.shift();
-      const lvlRise = this._lvl.length >= 4 &&
-        lvlNow - Math.min(...this._lvl.slice(0, -1)) > 9;
-      // 边沿触发：电平爬升的第一帧才算起音。若用"电平触发"，电平
-      // 缓慢变化时会把稳定性历史反复清空，音永远判定不出来
-      const attack = lvlRise && !this._wasRise;
-      this._wasRise = lvlRise;
+      const attack = this.onsets.update(lvlNow, now, this.sens);
       // 起音瞬间检测窗里新旧音混合，旧的稳定性读数全部作废：
       // 清空历史让新音从头积累 3 次一致检测，判定才跟得上节奏
       if (attack) {
@@ -290,7 +307,12 @@
         this.stableMidi = null;
         this._pendingFire = true;    // 发放判定名额
         this._pendingFireAt = now;
+        this._chordSeen.clear();
+        this._chordStartAt = now;
+        this._chordFired = false;
       }
+      this._checkChord(now, lvlNow);
+      if (lvlNow < this.sens) { this._silence(dt); return; }
       const res = global.DSP.detectPitch(this.buf, eng.sampleRate, this.scratch, { gateDb: this.sens });
       if (!res || res.conf < CONF_MIN) { this._silence(dt); return; }
       const midiF = 69 + 12 * Math.log2(res.hz / 440);
@@ -320,7 +342,11 @@
             this._pendingFire = false;
             this.firedMidi = midi;
             this.firedAt = now;
-            this._onNote(midi);
+            this._onNote({
+              midi, midiF: xs[1], cents: Math.round((xs[1] - midi) * 100),
+              onsetMs: slotValid ? this._pendingFireAt : now - 80,
+              onsetReliable: slotValid, confirmedMs: now,
+            });
           }
         } else {
           this.stableMidi = null;
@@ -331,6 +357,10 @@
     _silence(dt) {
       this.silMs += dt;
       if (this.silMs > 160) {
+        if (this.follower?.active) {
+          const feedback = this.follower.release(performance.now() - this.silMs + 120);
+          if (feedback) this.hint = feedback.message;
+        }
         this.det = null;
         this.stableMidi = null;
         this.holdMs = 0;
@@ -339,13 +369,63 @@
       }
     }
 
+    _checkChord(now, levelDb) {
+      if (this.mode !== 'score' || !this.score || this.scoreAuto ||
+          now < this._judgeCooldownUntil || this._chordFired ||
+          !this._chordStartAt || now - this._chordStartAt > 750 ||
+          now - this._lastChordCheck < 65 || levelDb < this.sens) return;
+      const ev = this.follower?.current;
+      if (!ev || ev.midis.length < 2) return;
+      this._lastChordCheck = now;
+      const recent = this.buf.subarray(Math.max(0, this.buf.length - 8192));
+      const evidence = global.DSP.detectChord(recent, this.engine.sampleRate, ev.midis,
+        this.chordScratch, { gateDb: this.sens });
+      if (!evidence) return;
+      for (const m of evidence.present) this._chordSeen.add(((m % 12) + 12) % 12);
+      const targetPcs = new Set(ev.midis.map((m) => ((m % 12) + 12) % 12));
+      const missing = ev.midis.filter((m) => !this._chordSeen.has(((m % 12) + 12) % 12));
+      if (evidence.ambiguous || targetPcs.size < 2) {
+        this.hint = '这个和弦只有同一音级的八度音，单路音频无法确认全部弦；可点「跳过当前音」继续';
+        return;
+      }
+      if (missing.length) {
+        this.hint = `和弦已听到 ${[...this._chordSeen].map((p) => NOTE_NAMES[p]).join('、') || '—'}；还缺 ${[...new Set(missing)].map(nameOf).join('、')}`;
+        return;
+      }
+      this._chordFired = true;
+      this._pendingFire = false;
+      this._gradeScore({ chordComplete: true, midis: ev.midis, onsetMs: this._chordStartAt,
+        onsetReliable: true }, ev.notes);
+    }
+
+    _gradeScore(note, positions) {
+      if (!this.follower || this.scoreAuto || performance.now() < this._judgeCooldownUntil) return;
+      const result = this.follower.ingest(note);
+      if (result.kind === 'hit' && !note.chordComplete) {
+        this._chordSeen.clear();
+        this._chordStartAt = 0; // 下一个和弦必须等自己的新起音
+      }
+      this.scoreCursor = this.follower.cursor;
+      this.hits = this.follower.hits;
+      this.attempts = this.follower.attempts;
+      this.streak = result.kind === 'hit' ? this.streak + 1 : result.kind === 'wrong' ? 0 : this.streak;
+      if (result.kind === 'hit') {
+        this._flowHits.set(result.index, performance.now());
+        this.anim.push({ positions, t0: performance.now(), kind: 'good' });
+      } else if (result.kind === 'wrong') {
+        this.anim.push({ positions, t0: performance.now(), kind: 'bad' });
+      }
+      this.hint = result.message;
+    }
+
     /* ---------- 一次"站稳的音" → 判定 ---------- */
-    _onNote(midi) {
+    _onNote(note) {
+      const midi = note.midi;
       const positions = this._positionsOf(midi);
       if (this.mode === 'quiz' && this.targets.length) {
         this.attempts++;
         const target = this.targets[this.tIdx];
-        if (midi === target) {
+        if (Math.abs(note.midiF - target) * 100 <= TOL_CENTS) {
           this.hits++;
           this.streak++;
           this.anim.push({ positions, t0: performance.now(), kind: 'good' });
@@ -363,30 +443,11 @@
           this.hint = `弹了 ${nameOf(midi)}，目标是 ${nameOf(target)} —— 弹指板上闪烁的那个音`;
         }
       } else if (this.mode === 'score' && this.score) {
-        // 乐谱跟弹：命中当前事件里的任意一个音就前进（和弦允许先弹到其中一根）
-        if (this.scoreAuto) return;   // 试听播放中不判定
-        // 试听刚停止：琴的余音还在检测窗里，冷却期不算用户弹的
-        if (performance.now() < this._judgeCooldownUntil) return;
-        this.attempts++;
-        const ev = this.score.events[this.scoreCursor];
+        if (this._chordFired) return; // 和弦余音不能误判为下一个单音
+        const ev = this.follower?.current;
         if (!ev) return;
-        if (ev.midis.indexOf(midi) !== -1) {
-          this.hits++;
-          this.streak++;
-          this.anim.push({ positions, t0: performance.now(), kind: 'good' });
-          this._flowHits.set(this.scoreCursor, performance.now());   // 乐谱流里闪绿
-          this.scoreCursor++;
-          if (this.scoreCursor >= this.score.events.length) {
-            this.hint = '整首跟弹完成！点"回开头"再来一轮';
-          } else {
-            const nx = this.score.events[this.scoreCursor];
-            this.hint = `对了！下一个：${nx.midis.map(nameOf).join(' + ')}`;
-          }
-        } else {
-          this.streak = 0;
-          this.anim.push({ positions, t0: performance.now(), kind: 'bad' });
-          this.hint = `弹了 ${nameOf(midi)}，这里要弹 ${ev.midis.map(nameOf).join(' 或 ')}`;
-        }
+        if (ev.midis.length > 1) return; // 和弦必须走完整音集合证据判定
+        this._gradeScore(note, positions);
       } else {
         const inS = this._inScale(midi);
         this.anim.push({ positions, t0: performance.now(), kind: inS ? 'good' : 'bad' });
@@ -413,12 +474,12 @@
         u.progress.textContent = `第 ${this.tIdx + 1}/${this.targets.length} 音 · 第 ${this.round} 轮`;
       } else if (this.mode === 'score' && this.score) {
         const evs = this.score.events;
-        const ev = evs[Math.min(this.scoreCursor, evs.length - 1)];
+        const ev = evs[this.scoreCursor];
         const m = ev ? ev.measure : this.score.measures - 1;
         u.target.textContent = ev ? ev.midis.map(nameOf).join('+') : '—';
         u.progress.textContent =
           `第 ${Math.min(m + 1, this.score.measures)}/${this.score.measures} 小节 · ` +
-          `第 ${Math.min(this.scoreCursor + 1, evs.length)}/${evs.length} 音`;
+          (ev ? `第 ${this.scoreCursor + 1}/${evs.length} 音` : `已完成 ${evs.length}/${evs.length} 音`);
         // 和弦手型卡随小节切换重画；进度条按拍推进
         if (m !== this._lastChordMeasure) {
           this._lastChordMeasure = m;
@@ -427,12 +488,18 @@
         const beat = ev ? ev.startBeat : this.score.totalBeats;
         this._scoreEls.bar.style.width =
           Math.min(100, (beat / Math.max(1, this.score.totalBeats)) * 100) + '%';
+        if (this.follower?.mode === 'tempo' && this.follower.startMs != null &&
+            performance.now() < this.follower.startMs) {
+          const left = Math.ceil((this.follower.startMs - performance.now()) * this.bpm / 60000);
+          u.progress.textContent += ` · 倒数 ${left} 拍`;
+        }
       } else {
         u.target.textContent = '—';
         u.progress.textContent = '探索模式';
       }
       u.streak.textContent = String(this.streak);
-      u.acc.textContent = this.attempts ? Math.round((this.hits / this.attempts) * 100) + '%' : '—';
+      const judged = this.attempts + (this.mode === 'score' ? this.follower?.skipped || 0 : 0);
+      u.acc.textContent = judged ? Math.round((this.hits / judged) * 100) + '%' : '—';
       u.hint.textContent = this.hint;
     }
 
@@ -570,9 +637,9 @@
       }
 
       // 乐谱跟弹：当前要弹的音（脉冲环）+ 后两个事件预览（淡环，越来越淡）
-      if (this.mode === 'score' && this.score && this.score.events.length) {
+      if (this.mode === 'score' && this.score && this.scoreCursor < this.score.events.length) {
         const evs = this.score.events;
-        const cur = evs[Math.min(this.scoreCursor, evs.length - 1)];
+        const cur = evs[this.scoreCursor];
         const pulse = 1 + 0.1 * Math.sin(now / 160);
         g.strokeStyle = C.clay;
         g.lineWidth = 2.4 * dpr;
@@ -688,8 +755,13 @@
         '<button class="btn" data-act="play">从头试听</button>' +
         '<button class="btn" data-act="stop">停止</button>' +
         '<button class="btn" data-act="restart">回开头</button>' +
-        '<label>速度 <input type="range" min="50" max="220" step="5" value="90">' +
+        '<label>跟弹 <select class="ss-follow"><option value="free">自由跟弹</option><option value="tempo">节拍跟弹</option></select></label>' +
+        '<button class="btn" data-act="start">开始节拍跟弹</button>' +
+        '<button class="btn" data-act="skip">跳过当前音</button>' +
+        '<label>速度 <input class="ss-bpm" type="range" min="30" max="300" step="5" value="90">' +
         '<b class="val">90</b></label>' +
+        '<label>输入补偿 <input class="ss-latency" type="range" min="0" max="250" step="5" value="0">' +
+        '<b class="ss-latency-val">0 ms</b></label>' +
         '<span class="ss-info"></span>' +
         '</div>' +
         '<div class="ss-body">' +
@@ -709,8 +781,13 @@
         play: strip.querySelector('[data-act=play]'),
         stop: strip.querySelector('[data-act=stop]'),
         restart: strip.querySelector('[data-act=restart]'),
-        bpm: strip.querySelector('input[type=range]'),
+        start: strip.querySelector('[data-act=start]'),
+        skip: strip.querySelector('[data-act=skip]'),
+        follow: strip.querySelector('.ss-follow'),
+        bpm: strip.querySelector('.ss-bpm'),
         bpmVal: strip.querySelector('.ss-transport .val'),
+        latency: strip.querySelector('.ss-latency'),
+        latencyVal: strip.querySelector('.ss-latency-val'),
         info: strip.querySelector('.ss-info'),
         chords: strip.querySelector('.ss-chords'),
         bar: strip.querySelector('.ss-progress > div'),
@@ -718,9 +795,32 @@
       this._scoreEls.play.addEventListener('click', () => this._scorePlay(true));
       this._scoreEls.stop.addEventListener('click', () => this._scoreStop(true));
       this._scoreEls.restart.addEventListener('click', () => { this._scoreRestart(); });
+      this._scoreEls.start.addEventListener('click', () => this._startPractice());
+      this._scoreEls.skip.addEventListener('click', () => {
+        if (!this.follower || this.follower.done || this.scoreAuto) return;
+        const i = this.follower.cursor++;
+        this.follower.results.set(i, { kind: 'skipped' });
+        this.follower.skipped++;
+        this.scoreCursor = this.follower.cursor;
+        this._resetDetection();
+        this.hint = this.follower.done ? '已到曲末' : '已跳过；下一个：' + this.follower.current.midis.map(nameOf).join(' + ');
+      });
+      this._scoreEls.follow.addEventListener('change', () => {
+        if (this.follower) { this.follower.mode = this._scoreEls.follow.value; this._scoreRestart(); }
+      });
       this._scoreEls.bpm.addEventListener('input', () => {
         this.bpm = parseFloat(this._scoreEls.bpm.value);
         this._scoreEls.bpmVal.textContent = String(Math.round(this.bpm));
+        if (this.follower) this.follower.bpm = this.bpm;
+        if (this.follower?.mode === 'tempo' && this.follower.startMs != null) {
+          this._scoreRestart();
+          this.hint = '速度已更改；请重新点「开始节拍跟弹」';
+        }
+      });
+      this._scoreEls.latency.addEventListener('input', () => {
+        const ms = parseFloat(this._scoreEls.latency.value);
+        this._scoreEls.latencyVal.textContent = ms + ' ms';
+        if (this.follower) this.follower.latencyMs = ms;
       });
       this._btnScore.addEventListener('click', () => this._openScoreModal());
       // 载入弹窗
@@ -786,7 +886,7 @@
       });
       this._modalEls.parseBtn.addEventListener('click', () => this._tryLoad(this._modalEls.textarea.value));
       // 全停 / Esc 顺带停掉试听调度
-      $('btn-panic').addEventListener('click', () => this._scoreStop(false));
+      $('btn-panic').addEventListener('click', () => this._scoreStop(true));
       global.addEventListener('keydown', (e) => { if (e.key === 'Escape') this._scoreStop(false); });
     }
 
@@ -820,6 +920,10 @@
       }
       this._scoreStop(false);
       this.score = score;
+      this.follower = new global.PracticeNS.ScoreFollower(score, {
+        mode: this._scoreEls.follow.value, bpm: this.bpm,
+        latencyMs: parseFloat(this._scoreEls.latency.value),
+      });
       this._lastChordMeasure = -1;
       this._scoreRestart();
       this._scoreEls.strip.classList.remove('hidden');
@@ -836,19 +940,23 @@
         `${score.measures} 小节 · ${score.events.length} 音符`,
         score.chords.length ? '和弦 ' + score.chords.slice(0, 8).join(' ') : '',
         score.bpm ? score.bpm + ' BPM' : '',
+        score.stats.skipped ? `跳过 ${score.stats.skipped} 个不可弹音` : '',
       ];
       this._scoreEls.info.textContent = parts.filter(Boolean).join(' · ');
       if (score.bpm) {   // 谱面标题带 BPM → 应用到试听速度
         this.bpm = score.bpm;
         this._scoreEls.bpm.value = String(score.bpm);
         this._scoreEls.bpmVal.textContent = String(score.bpm);
+        this.follower.bpm = score.bpm;
       }
-      this.hint = '跟弹：指板上闪烁的就是下一个音（后两个音以淡环预览），弹对自动前进';
+      this.hint = '自由跟弹：弹对谱流随你移动；节拍跟弹请点「开始节拍跟弹」';
       this._updateStrip();
     }
 
     _scoreRestart() {
       this._scoreStop(false);
+      this._resetDetection();
+      if (this.follower) this.follower.reset();
       this.scoreCursor = 0;
       this._lastChordMeasure = -1;
       this._flowBeat = 0;
@@ -860,12 +968,66 @@
       this._updateStrip();
     }
 
+    async _startPractice() {
+      if (!this.follower || !this.score) return;
+      this._scoreRestart();
+      if (this.follower.mode !== 'tempo') {
+        this.hint = '自由跟弹已就绪：按自己的速度弹奏';
+        return;
+      }
+      await this.engine.resume();
+      if (this.engine.ctx.state && this.engine.ctx.state !== 'running') {
+        this.hint = '音频尚未启动，请再次点击开始';
+        return;
+      }
+      this.follower.bpm = this.bpm;
+      const startMs = this.follower.start(performance.now(), 4);
+      this._startMetronome(startMs);
+      this.hint = '四拍倒数后开始；节拍声和谱面拍位作为早晚判定基准';
+    }
+
+    _startMetronome(startMs) {
+      this._stopMetronome();
+      const ctx = this.engine.ctx;
+      const baseCtx = ctx.currentTime + (startMs - performance.now()) / 1000;
+      const seconds = 60 / this.bpm;
+      this._metronomeNext = -4;
+      const schedule = () => {
+        if (!this.follower?.startMs || this.mode !== 'score') { this._stopMetronome(); return; }
+        while (this._metronomeNext * seconds + baseCtx < ctx.currentTime + 0.4 &&
+               this._metronomeNext < Math.ceil(this.score.totalBeats)) {
+          const beat = this._metronomeNext++;
+          const at = baseCtx + beat * seconds;
+          if (at < ctx.currentTime - 0.05) continue;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.frequency.value = beat % 4 === 0 ? 1100 : 780;
+          gain.gain.setValueAtTime(0.0001, at);
+          gain.gain.exponentialRampToValueAtTime(0.045, at + 0.003);
+          gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.045);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(at);
+          osc.stop(at + 0.05);
+          osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+        }
+        if (this._metronomeNext >= Math.ceil(this.score.totalBeats)) this._stopMetronome();
+      };
+      this._metronomeTimer = setInterval(schedule, 100);
+      schedule();
+    }
+
+    _stopMetronome() {
+      if (this._metronomeTimer) clearInterval(this._metronomeTimer);
+      this._metronomeTimer = null;
+    }
+
     /* 从当前游标开始自动播放（内置钢琴音色，速度 = 速度滑杆） */
     _scorePlay(fromStart) {
       if (!this.score || !this.score.events.length) return;
       this.engine.resume();
       this._scoreStop(false);
       if (fromStart) this._scoreRestart();
+      if (this.follower?.mode === 'tempo') this.follower.startMs = null;
       const evs = this.score.events;
       const startBeat = this.scoreCursor < evs.length ? evs[this.scoreCursor].startBeat : 0;
       this.scoreAuto = { t0: this.engine.ctx.currentTime + 0.25, beat0: startBeat, idx: this.scoreCursor };
@@ -898,9 +1060,9 @@
         a.idx++;
       }
       // 显示游标随播放推进
-      let c = a.idx;
+      let c = 0;
       while (c < evs.length && evs[c].startBeat <= beatNow) c++;
-      this.scoreCursor = Math.min(c, evs.length - 1);
+      this.scoreCursor = Math.min(c, evs.length);
       const last = evs[evs.length - 1];
       if (beatNow > last.startBeat + last.durBeats + 1) {
         this._scoreStop(true);
@@ -911,8 +1073,10 @@
 
     _scoreStop(showHint) {
       const wasPlaying = !!this.scoreAuto || this._autoTimer != null;
+      this._stopMetronome();
       if (this._autoTimer) { clearInterval(this._autoTimer); this._autoTimer = null; }
       this.scoreAuto = null;
+      if (wasPlaying && this.follower) this.scoreCursor = this.follower.cursor;
       // 余音冷却：停止后琴声还要衰减约 0.6s + 检测窗 0.34s，
       // 这段时间里的"稳定音"是程序的余音而不是用户弹的，不判定。
       // 只在真的停掉过播放时才设——手动"回开头"没有余音，别挡用户弹。
@@ -924,7 +1088,9 @@
       }
       this._autoPending.length = 0;
       if (showHint && this.mode === 'score' && this.score) {
-        this.hint = '已停止试听 —— 指板上闪烁的音就是你要弹的';
+        if (this.follower?.mode === 'tempo') this.follower.startMs = null;
+        this.hint = wasPlaying ? '已停止试听 —— 指板上闪烁的音就是你要弹的' :
+          '节拍练习已停止；点「开始节拍跟弹」重新开始';
         this._updateStrip();
       }
     }
@@ -955,7 +1121,7 @@
         const a = this.scoreAuto;
         target = (this.engine.ctx.currentTime - a.t0) * this.bpm / 60 + a.beat0;
       } else {
-        const ev = evs[Math.min(this.scoreCursor, evs.length - 1)];
+        const ev = evs[this.scoreCursor];
         target = ev ? ev.startBeat : this.score.totalBeats;
       }
       if (this._flowBeat == null || Math.abs(this._flowBeat - target) > 8) this._flowBeat = target;
@@ -1008,7 +1174,8 @@
 
       // 小节线（贯穿双谱带）+ 小节号
       g.textAlign = 'center';
-      for (let b = Math.max(0, Math.floor(view / 4) * 4); xOf(b) < bw + 20; b += 4) {
+      for (const [mi, b] of this.score.measureStarts.entries()) {
+        if (xOf(b) >= bw + 20) break;
         if (xOf(b) < -10) continue;
         const x = Math.round(xOf(b)) + 0.5;
         g.strokeStyle = 'rgba(70,62,48,0.2)';
@@ -1016,7 +1183,7 @@
         g.beginPath(); g.moveTo(x, staffTop - 4 * dpr); g.lineTo(x, tabBot + 4 * dpr); g.stroke();
         g.fillStyle = C.ink3;
         g.font = `${Math.round(9 * dpr)}px Georgia, serif`;
-        g.fillText(String(Math.round(b / 4) + 1), x, tabBot + 13 * dpr);
+        g.fillText(String(mi + 1), x, tabBot + 13 * dpr);
       }
 
       // 音符：TAB 块 + 品号，五线谱音符头 / 符干 / 加线 / 升号
@@ -1027,6 +1194,7 @@
         const x1 = xOf(ev.startBeat + ev.durBeats);
         if (x1 < gutter || x0 > bw) continue;
         const isCur = i === this.scoreCursor && !this.scoreAuto;
+        const outcome = this.follower?.results.get(i);
         const sounding = this.scoreAuto && view >= ev.startBeat && view < ev.startBeat + ev.durBeats;
         const hitT = this._flowHits.get(i);
         const hitK = hitT != null ? Math.max(0, 1 - (now - hitT) / 600) : 0;
@@ -1037,7 +1205,9 @@
         for (const n of ev.notes) {
           const y = tabTop + (n.string + 0.5) * rh;
           let fill = '#efe9d5', text = C.ink2;
-          if (hitK > 0) { fill = C.sage; text = '#fdf9f0'; }
+          if (outcome?.kind === 'hit' || hitK > 0) { fill = C.sage; text = '#fdf9f0'; }
+          else if (outcome?.kind === 'skipped') { fill = '#b8907f'; text = '#fff'; }
+          else if (outcome?.kind === 'wrong') { fill = '#a85646'; text = '#fff'; }
           else if (isCur || sounding) { fill = C.clay; text = '#fdf9f0'; }
           else if (ev.startBeat + ev.durBeats <= view) { fill = '#eae4cf'; text = C.ink3; }
           _rr(g, x0 + 1 * dpr, y - 3.6 * dpr, Math.max(4 * dpr, x1 - x0 - 2 * dpr), 7.2 * dpr, 2.5 * dpr, fill,
@@ -1051,12 +1221,14 @@
         }
 
         // ---- 五线谱音符 ----
-        const xc = (x0 + x1) / 2;
+        const xc = x0 + 7 * dpr;
         const whole = ev.durBeats >= 3.75, half = ev.durBeats >= 1.75;
         for (const n of ev.notes) {
           const pos = yHead(n.midi);
-          const x = Math.max(xc, headX + 3 * dpr);
-          const fillHead = hot ? hotCol :
+          const x = xc;
+          if (x < gutter - 8 * dpr) continue;
+          const fillHead = outcome?.kind === 'hit' ? C.sage :
+            outcome?.kind === 'skipped' ? '#a86955' : outcome?.kind === 'wrong' ? '#a85646' : hot ? hotCol :
             (ev.startBeat + ev.durBeats <= view ? 'rgba(33,30,25,0.35)' : C.ink);
           // 加线（超出五线谱的音按线位补短横线）
           g.strokeStyle = 'rgba(33,30,25,0.55)';
