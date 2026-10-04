@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>效果器可视化实验室</title>
-<link rel="stylesheet" href="css/style.css?v=16">
+<link rel="stylesheet" href="css/style.css?v=21">
 </head>
 <body>
 
@@ -132,6 +132,7 @@
     <button class="tab active" data-tab="spectrum">频谱</button>
     <button class="tab" data-tab="wave">波形</button>
     <button class="tab" data-tab="spectrogram">频谱图</button>
+    <button class="tab" data-tab="fretboard">指板</button>
     <button class="tab" data-tab="analysis">分析</button>
     <span class="readouts">
       <span class="ro"><b id="ro-f0">—</b><i>基频</i></span>
@@ -154,6 +155,32 @@
       </div>
     </div>
     <canvas id="canvas-analysis" class="viz"></canvas>
+
+    <!-- 指板训练器：音阶提示 + 实时测音 + 对错反馈 -->
+    <div id="fretboard-wrap" class="viz">
+      <div id="trainer-ctrl">
+        <label>根音 <select id="tb-root"></select></label>
+        <label>音阶 <select id="tb-scale"></select></label>
+        <label>模式 <select id="tb-mode">
+          <option value="explore">探索 · 自由弹</option>
+          <option value="quiz">闯关 · 依序弹音阶</option>
+          <option value="score">跟弹 · 乐谱</option>
+        </select></label>
+        <label class="chk"><input type="checkbox" id="tb-labels" checked> 显示音名</label>
+        <label>灵敏度 <input type="range" id="tb-sens" min="-70" max="-30" step="1" value="-48">
+          <b class="val" id="tb-sens-val">-48 dB</b></label>
+        <button class="btn" id="tb-reset">重置成绩</button>
+      </div>
+      <div id="trainer-strip">
+        <div class="t-block"><i>检测音</i><b id="tb-detected">—</b><em id="tb-det-hz">未连接输入</em></div>
+        <div class="t-block target"><i>目标音</i><b id="tb-target">—</b><em id="tb-progress">探索模式</em></div>
+        <div class="t-block"><i>连对</i><b id="tb-streak">0</b><em>&nbsp;</em></div>
+        <div class="t-block"><i>正确率</i><b id="tb-acc">—</b><em>&nbsp;</em></div>
+        <div class="t-hint" id="tb-hint"></div>
+      </div>
+      <canvas id="canvas-fretboard"></canvas>
+    </div>
+
     <div id="spectrum-legend">
       <span class="lg"><i class="sw" style="color:#bf5233"></i>输出</span>
       <span class="lg"><i class="sw thin" style="color:#a29a88"></i>输入</span>
@@ -223,11 +250,13 @@
   </div>
 </div>
 
-<script src="js/dsp.js?v=16"></script>
+<script src="js/dsp.js?v=17"></script>
 <script src="js/effects.js?v=16"></script>
-<script src="js/audio-engine.js?v=18"></script>
+<script src="js/audio-engine.js?v=19"></script>
 <script src="js/visualizer.js?v=16"></script>
-<script src="js/ui.js?v=25"></script>
-<script src="js/main.js?v=18"></script>
+<script src="js/score.js?v=25"></script>
+<script src="js/fretboard.js?v=37"></script>
+<script src="js/ui.js?v=26"></script>
+<script src="js/main.js?v=20"></script>
 </body>
 </html>

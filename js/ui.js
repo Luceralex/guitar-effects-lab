@@ -553,12 +553,16 @@
           spectrum: 'canvas-spectrum',
           wave: 'canvas-wave',
           spectrogram: 'spec-wrap',
+          fretboard: 'fretboard-wrap',
           analysis: 'canvas-analysis',
         };
         for (const [name, id] of Object.entries(panes)) {
           $(id).classList.toggle('active', name === tab);
         }
         $('spectrum-legend').classList.toggle('hidden', tab !== 'spectrum');
+        // 指板页需要更多纵向空间放六根弦，把图版拉高
+        $('viz-area').classList.toggle('tall', tab === 'fretboard');
+        if (tab === 'fretboard' && app.trainer) app.trainer.onShow();
         app.viz.forceResize();   // 隐藏期间画布可能塌到下限宽，切回来强制按当前布局重算
       });
 

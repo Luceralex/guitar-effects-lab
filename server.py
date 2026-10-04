@@ -75,6 +75,18 @@ def _watchdog():
 app = FastAPI(title="效果器可视化实验室 · 后端")
 
 
+# ---------- 禁止启发式缓存 ----------
+# 静态响应若没有 Cache-Control，Chrome 会按"文件多久没改过"启发式缓存
+# index.html——项目改版后用户打开的还是旧页面（必须手动 Ctrl+F5）。
+# no-cache = 允许缓存但每次回源用 ETag 验证，没变就是 304，本地几乎零开销。
+@app.middleware("http")
+async def no_heuristic_cache(request: Request, call_next):
+    response = await call_next(request)
+    if not request.url.path.startswith("/api"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.post("/api/heartbeat")
 async def heartbeat():
     global LAST_BEAT

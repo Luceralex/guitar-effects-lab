@@ -15,6 +15,10 @@
   'use strict';
 
   const FFT_SIZE = 4096;
+  // 指板训练器的测音窗口：16384 点 ≈ 340ms @48kHz。
+  // 频率分辨率 = 采样率/窗长 ≈ 2.9Hz —— 低音弦 E2(82.4Hz) 相邻半音只差
+  // 4.9Hz，4096 点的 11.7Hz 分辨率分不开 E2/F2，长窗才够。
+  const PITCH_FFT_SIZE = 16384;
 
   class AudioEngine {
     constructor() {
@@ -40,6 +44,11 @@
       this.preAnalyser = ctx.createAnalyser();
       this.preAnalyser.fftSize = FFT_SIZE;
       this.preAnalyser.smoothingTimeConstant = 0;
+      // 测音抽头（指板训练器）：同样取效果链之前的原始信号，
+      // 这样不管效果器怎么调，检测到的永远是琴本身弹的音
+      this.pitchAnalyser = ctx.createAnalyser();
+      this.pitchAnalyser.fftSize = PITCH_FFT_SIZE;
+      this.pitchAnalyser.smoothingTimeConstant = 0;
       this.sink = ctx.createGain();
       this.sink.gain.value = 0;               // 静音假负载：只为让节点图被拉活
 
@@ -59,7 +68,9 @@
       // 布线
       this.sourceBus.connect(this.chain.input);
       this.sourceBus.connect(this.preAnalyser);
+      this.sourceBus.connect(this.pitchAnalyser);
       this.preAnalyser.connect(this.sink);
+      this.pitchAnalyser.connect(this.sink);
       this.sink.connect(ctx.destination);
       this.chain.output.connect(this.postAnalyser);
       this.postAnalyser.connect(this.master);
@@ -377,5 +388,5 @@
     }
   }
 
-  global.EngineNS = { AudioEngine, FFT_SIZE };
+  global.EngineNS = { AudioEngine, FFT_SIZE, PITCH_FFT_SIZE };
 })(window);

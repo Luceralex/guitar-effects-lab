@@ -12,8 +12,16 @@ window.addEventListener('DOMContentLoaded', () => {
     },
     engine
   );
-  const app = { engine, viz };
-  window.app = app;   // 控制台调试入口：app.engine / app.viz
+  const trainer = new FretboardTrainer.Trainer(engine, {
+    canvas: 'canvas-fretboard',
+    root: 'tb-root', scale: 'tb-scale', mode: 'tb-mode',
+    labels: 'tb-labels', sens: 'tb-sens', sensVal: 'tb-sens-val', reset: 'tb-reset',
+    detected: 'tb-detected', detHz: 'tb-det-hz',
+    target: 'tb-target', progress: 'tb-progress',
+    streak: 'tb-streak', acc: 'tb-acc', hint: 'tb-hint',
+  }, () => viz.tab === 'fretboard');
+  const app = { engine, viz, trainer };
+  window.app = app;   // 控制台调试入口：app.engine / app.viz / app.trainer
   UI.init(app);
 
   const tick = () => { viz.frame(); UI.updateMeters(); };
