@@ -10,3 +10,4 @@ Thumbs.db
 build/
 dist/
 *.spec
+node_modules/

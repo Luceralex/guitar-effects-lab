@@ -141,7 +141,7 @@
    * 识别形如 e|---3--3--| 的行；连续 ≥4 行凑成一个 block；
    * 和弦行（整行只有和弦记号）分配给紧随其后的 block 逐小节。 */
   function parseTabText(text, tuning, maxFret) {
-    const labelIdx = { e: 0, B: 1, G: 2, D: 3, A: 4, E: 5 };
+    const labelIdx = { e: 0, b: 1, B: 1, g: 2, G: 2, d: 3, D: 3, a: 4, A: 4, E: 5 };
     const STRING_RE = /^\s*([eEaAdDgGbB])\s*\|(.*)$/;
     const CHORD_TOKEN_RE = /^[A-G][#b]?(m|maj|min|dim|aug|sus|add|M)?[0-9]*(sus[24]|add[0-9]+|b5|#5)?(\/[A-G][#b]?)?$/;
     const lines = String(text || '').replace(/\r/g, '').split('\n');
@@ -184,8 +184,7 @@
         const cols = [...byCol.keys()].sort((a, b) => a - b);
         for (let k = 0; k < cols.length; k++) {
           const col = cols[k];
-          const gap = (k + 1 < cols.length ? cols[k + 1] : width) - col;
-          evs.push({ gapCols: Math.max(1, gap), measure: measureBase, notes: byCol.get(col) });
+          evs.push({ col, width, measure: measureBase, notes: byCol.get(col) });
         }
       }
       // 和弦行挂到本 block 的小节
@@ -217,16 +216,15 @@
     }
     flushBlock();
 
-    // 时值推断：ASCII 谱没有绝对时间，用"到下一个音的列距 / 中位列距"
-    // 估拍数（中位距 = 1 拍），长度截到 [0.5, 4] 拍并按半拍取整。
-    const gaps = evs.map((e) => e.gapCols).sort((a, b) => a - b);
-    const medianGap = gaps.length ? Math.max(2, gaps[gaps.length >> 1]) : 4;
-    let beat = 0;
-    const events = evs.map((e) => {
-      const beats = Math.max(0.5, Math.min(4, Math.round((e.gapCols / medianGap) * 2) / 2));
-      const ev = { startBeat: beat, durBeats: beats, measure: e.measure, notes: e.notes };
-      beat += beats;
-      return ev;
+    // ASCII 谱没有正式时值。每根竖线之间暂按四拍等宽网格估计；
+    // 同小节下一列或小节末尾决定当前音的估计时长。
+    const events = evs.map((e, i) => {
+      const startBeat = e.measure * MEASURE_BEATS + e.col / e.width * MEASURE_BEATS;
+      const next = evs[i + 1];
+      const endBeat = next && next.measure === e.measure
+        ? e.measure * MEASURE_BEATS + next.col / next.width * MEASURE_BEATS
+        : (e.measure + 1) * MEASURE_BEATS;
+      return { startBeat, durBeats: Math.max(0.25, endBeat - startBeat), measure: e.measure, notes: e.notes };
     });
     if (!events.length) return { error: '没有解析到任何音符 —— 检查粘贴的是不是 e|---3---| 形式的六线谱' };
     return buildScore({
@@ -244,7 +242,10 @@
     try { doc = new DOMParser().parseFromString(text, 'text/xml'); }
     catch (e) { return { error: 'XML 解析失败：' + e.message }; }
     if (doc.querySelector('parsererror')) return { error: '不是有效的 MusicXML 文件' };
-    const part = doc.querySelector('part');
+    if (doc.documentElement?.tagName === 'score-timewise') {
+      return { error: '暂不支持 score-timewise MusicXML，请导出 score-partwise 格式' };
+    }
+    const part = doc.querySelector('score-partwise > part');
     if (!part) return { error: 'MusicXML 里没有乐谱声部（<part>）' };
     const events = [];
     const chordMarks = [];
@@ -253,18 +254,25 @@
     let transpose = 0;
     let cursor = 0;
     let prevStart = 0;
+    let measureEnd = 0;
+    const measureStarts = [];
     let bpm = null;
     let measures = 0;
 
     for (const measure of part.children) {
       if (measure.tagName !== 'measure') continue;
+      const measureStart = measureEnd;
+      measureStarts.push(measureStart);
+      cursor = measureStart;
+      prevStart = measureStart;
       measures++;
       for (const node of measure.children) {
         if (node.tagName === 'attributes') {
           const dv = node.querySelector('divisions');
           if (dv) divisions = parseFloat(dv.textContent) || divisions;
-          const tr = node.querySelector('transpose chromatic');
-          if (tr) transpose = parseInt(tr.textContent, 10) || 0;
+          const tr = node.querySelector('transpose');
+          if (tr) transpose = (parseInt(tr.querySelector('chromatic')?.textContent || '0', 10) || 0) +
+            12 * (parseInt(tr.querySelector('octave-change')?.textContent || '0', 10) || 0);
         } else if (node.tagName === 'harmony') {
           // 注意：MusicXML 里是 <root-step>/<root-alter> 这种带连字符的
           // 单个标签，不能写 'root step' 后代选择器（那样永远匹配不到）
@@ -272,7 +280,7 @@
           const alter = parseInt(node.querySelector('root-alter')?.textContent || '0', 10) || 0;
           const kind = node.querySelector('kind')?.textContent || 'major';
           if (step) {
-            const root = ((STEP_PC[step] + alter) % 12 + 12) % 12;
+            const root = ((STEP_PC[step] + alter + transpose) % 12 + 12) % 12;
             const q = QUALITY_MAP[kind === 'major' ? '' : kind] || 'maj';
             const ivs = QUALITY_INTERVALS[q] || [0, 4, 7];
             chordMarks.push({
@@ -283,14 +291,21 @@
           }
         } else if (node.tagName === 'backup' || node.tagName === 'forward') {
           const d = parseFloat(node.querySelector('duration')?.textContent || '0') / divisions;
-          cursor += node.tagName === 'backup' ? -d : d;
+          cursor = Math.max(measureStart, cursor + (node.tagName === 'backup' ? -d : d));
+          measureEnd = Math.max(measureEnd, cursor);
+        } else if ((node.tagName === 'sound' || node.tagName === 'direction') && node.querySelector('sound[tempo]')) {
+          bpm = parseFloat(node.querySelector('sound[tempo]').getAttribute('tempo')) || bpm;
         } else if (node.tagName === 'sound' && node.getAttribute('tempo')) {
           bpm = parseFloat(node.getAttribute('tempo')) || bpm;
         } else if (node.tagName === 'note') {
           if (node.querySelector('grace')) continue;               // 装饰音不计拍
           if (node.querySelector('unpitched')) continue;           // 打击乐声部
           const dur = Math.max(0, parseFloat(node.querySelector('duration')?.textContent || '0') / divisions);
-          if (node.querySelector('rest')) { if (!node.querySelector('chord')) cursor += dur; continue; }
+          if (node.querySelector('rest')) {
+            if (!node.querySelector('chord')) cursor += dur;
+            measureEnd = Math.max(measureEnd, cursor);
+            continue;
+          }
           const step = node.querySelector('pitch step')?.textContent;
           if (!step) continue;
           const alter = parseInt(node.querySelector('pitch alter')?.textContent || '0', 10) || 0;
@@ -299,25 +314,31 @@
           const isChord = !!node.querySelector('chord');
           const start = isChord ? prevStart : cursor;
           if (!isChord) { prevStart = start; cursor += dur; }
+          measureEnd = Math.max(measureEnd, start + dur, cursor);
           const last = events[events.length - 1];
           if (isChord && last && last.startBeat === start) {
             last.midis.push(midi);
             last.durBeats = Math.max(last.durBeats, dur);
           } else {
-            events.push({ startBeat: start, durBeats: Math.max(0.25, dur), midis: [midi] });
+            events.push({ startBeat: start, durBeats: Math.max(0.25, dur), midis: [midi], measure: measures - 1 });
           }
         }
       }
     }
     if (!events.length) return { error: 'MusicXML 里没有解析到音符' };
     events.sort((a, b) => a.startBeat - b.startBeat);
-    const totalBeats = events.reduce((mx, e) => Math.max(mx, e.startBeat + e.durBeats), 0);
-    // 每小节实际拍数（XML 小节长度不一定是 4/4），用于把事件折算到小节号
-    const beatsPerMeasure = measures ? Math.max(1, totalBeats / measures) : MEASURE_BEATS;
+    const joined = [];
+    for (const ev of events) {
+      const prev = joined[joined.length - 1];
+      if (prev && prev.startBeat === ev.startBeat && prev.measure === ev.measure) {
+        prev.midis.push(...ev.midis);
+        prev.durBeats = Math.max(prev.durBeats, ev.durBeats);
+      } else joined.push(ev);
+    }
     return buildScore({
       source: 'xml', title: doc.querySelector('work-title, movement-title')?.textContent?.trim() || null,
-      events: events.map((e) => ({ ...e, measure: Math.min(measures - 1, Math.floor(e.startBeat / beatsPerMeasure)) })),
-      measures, chordMarks, tuning, maxFret, warnings,
+      events: joined, measures, measureStarts, totalBeats: measureEnd,
+      chordMarks, tuning, maxFret, warnings,
       bpm: bpm && bpm > 20 && bpm < 300 ? Math.round(bpm) : null,
     });
   }
@@ -349,7 +370,7 @@
             c.fret * 0.1 + (c.fret === 0 ? -0.6 : 0);
           if (cost < bestCost) { bestCost = cost; best = c; }
         }
-        notes.push(best);
+        notes.push({ ...best, midi: midis[0] });
       } else if (midis.length > 1) {
         const candLists = midis.map(positionsOf);
         if (candLists.some((l) => !l.length)) { skipped += midis.length; continue; }
@@ -381,7 +402,7 @@
         };
         dfs(0, [], []);
         if (!best) { skipped += midis.length; continue; }
-        notes.push(...best);
+        notes.push(...best.map((p, i) => ({ ...p, midi: midis[i] })));
       }
       ev.notes = notes;
       ev.midis = notes.map((n) => tuning[n.string] + n.fret);
@@ -395,7 +416,8 @@
 
   /* ================= 组装：拍号统计 + 每小节和弦 ================= */
   function buildScore(base) {
-    const { events, tuning, maxFret } = base;
+    let { events } = base;
+    const { tuning, maxFret } = base;
     // tab 事件已有指位 → 补 midi；xml 事件只有 midi → 映射指位
     if (base.source === 'tab') {
       for (const ev of events) {
@@ -403,9 +425,13 @@
         ev.midis = ev.notes.map((n) => n.midi);
       }
     } else {
-      mapToFretboard({ events }, tuning, maxFret);
+      const mapped = mapToFretboard({ events }, tuning, maxFret);
+      events = mapped.events;
+      base.stats = mapped.stats;
     }
-    const totalBeats = events.reduce((mx, e) => Math.max(mx, e.startBeat + e.durBeats), 0);
+    if (!events.length) return { error: '谱面里的音符超出当前 15 品标准调弦的可弹范围' };
+    const totalBeats = Math.max(base.totalBeats || 0,
+      events.reduce((mx, e) => Math.max(mx, e.startBeat + e.durBeats), 0));
     const measures = Math.max(1, base.measures);
     // 每小节和弦：谱面记号优先，没有就按该小节音级集合推断
     const chordForMeasure = new Array(measures).fill(null);
@@ -433,6 +459,7 @@
     return {
       source: base.source, title: base.title,
       events, measures, totalBeats,
+      measureStarts: base.measureStarts || Array.from({ length: measures }, (_, m) => m * MEASURE_BEATS),
       chordForMeasure,
       chords: [...new Set(chordForMeasure.filter(Boolean).map((c) => c.name))],
       bpm: base.bpm || null,
@@ -541,8 +568,8 @@
       const seq = [ch.root, ...ch.pad, ch.pad[2], ch.pad[1], ch.pad[0]];
       seq.forEach(([si, fret], c) => put(grid, si, fret, c * 2));
     });
-    // 时间轴按"8 分音符 = 1 拍"折算：试听速度设 200 才是原曲 100 的律动
-    const head = (sub) => [`丸サ進行 · ${sub}（BPM200）`, ''];
+    // 每小节 16 列 = 4 拍，速度 100 BPM。
+    const head = (sub) => [`丸サ進行 · ${sub}（BPM100）`, ''];
     return {
       strumText: [...head('弹唱扫弦'), strum.names.join('  '), ...strum.lines].join('\n'),
       fingerText: [...head('指弹琶音'), finger.names.join('  '), ...finger.lines].join('\n'),
