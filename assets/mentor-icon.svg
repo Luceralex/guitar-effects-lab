@@ -1,7 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Mentor">
-  <rect width="64" height="64" rx="15" fill="#fff"/>
-  <path d="M12 47V16L32 40L52 16V47" fill="none" stroke="#191919" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M52 16V6C56 8 59 12 59 17" fill="none" stroke="#191919" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <ellipse cx="12" cy="49" rx="6" ry="4" transform="rotate(-25 12 49)" fill="#bd6447"/>
-  <ellipse cx="52" cy="49" rx="6" ry="4" transform="rotate(-25 52 49)" fill="#bd6447"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="-2 -8 80 80" role="img" aria-label="Mentor"><rect x="-2" y="-8" width="80" height="80" rx="18" fill="#fff"/><g>
+  <path d="M10.3 57V17
+ C10.3 14.45 13.52 13.3 15.14 15.35
+ L33 38.57L50.3 16.08V6
+ C50.3 3.75 52.12 2.75 54.06 3.65
+ C60.33 6.56 65.11 11.48 67.02 17.29
+ C67.86 19.82 63.94 21.23 62.98 18.71
+ C61.52 14.87 58.88 11.76 55.7 9.8
+ V57H50.3V24.92L35.14 44.65
+ Q33 47.43 30.86 44.65L15.7 24.92V57Z" fill="#20211f"/>
+  <ellipse cx="13" cy="57" rx="6.8" ry="4.6" transform="rotate(-25 13 57)" fill="#b86549"/>
+  <ellipse cx="53" cy="57" rx="6.8" ry="4.6" transform="rotate(-25 53 57)" fill="#b86549"/>
+</g></svg>
