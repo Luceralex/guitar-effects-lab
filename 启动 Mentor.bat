@@ -1,3 +1,3 @@
 @echo off
-call "%~dp0启动效果器.bat"
+call "%~dp0launch.bat"
 exit /b %errorlevel%
